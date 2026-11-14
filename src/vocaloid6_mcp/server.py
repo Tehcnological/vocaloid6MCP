@@ -26,6 +26,8 @@ Control VOCALOID6 and write VOCALOID3/4/5/6 projects, in English or Japanese.
    Chinese = one hanzi or pinyin syllable per note; Korean = one syllable per note. VOCALOID6 works out the phonemes itself when it loads the project, so
    phonemes read back as null until then. Give `phoneme` only to override the pronunciation (it gets protected).
 6. export_vsqx writes .vsqx for the VOCALOID3/4 editors (classic tracks only). VOCALOID2 is not supported.
+7. Live tools bring VOCALOID6 to the front while they open its menus, so keys the user types then go to VOCALOID6.
+   Before using live tools, ask the user not to type or click until you are done; prefer path= edits otherwise.
 
 VOCALOID6 を操作し、VOCALOID3/4/5/6 のプロジェクトを英語・日本語で作成します。
 1. まず vocaloid_status を呼んでください。ライブ操作は Windows の UI オートメーションで VOCALOID6 エディターを操作します。
@@ -40,6 +42,8 @@ VOCALOID6 を操作し、VOCALOID3/4/5/6 のプロジェクトを英語・日本
    伸ばし音符を使うと "u:" になります（伸ばしは母音を phoneme に指定）。中国語は1音符1字（またはピンイン1音節）、韓国語は1音符1音節。発音記号は VOCALOID6 が
    読み込み時に自動で付けるため、それまでは null です。発音を変えたいときだけ `phoneme` を指定してください（保護されます）。
 6. export_vsqx は VOCALOID3/4 用の .vsqx を書き出します（VOCALOID トラックのみ）。VOCALOID2 には対応していません。
+7. ライブ操作はメニューを開く間 VOCALOID6 を前面に出すため、そのときのユーザーの入力は VOCALOID6 に届きます。
+   ライブ操作の前に、終わるまでキーボードやマウスに触れないようユーザーに伝えてください。難しければ path= で編集してください。
 """
 
 mcp = FastMCP("vocaloid6", instructions=INSTRUCTIONS, log_level="WARNING")

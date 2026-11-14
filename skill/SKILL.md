@@ -17,6 +17,9 @@ Never pass `force=true` unless the user agreed to lose unsaved work.
 
 1. **Start.** `vocaloid_status`. Launch if needed. Before live edits, `get_project` and check `path` is the project
    you expect. Live tools need no dialog open in VOCALOID6 (`open_dialogs` must be empty).
+   **Tell the user, before the first live tool:** "While I work in VOCALOID6, please don't type or click: it comes
+   to the front when I open its menus, and your keys would go to it." Say it again before long live runs
+   (several edits in a row, `export_wav`). Prefer file edits (`path=`) when the user is busy on the computer.
 2. **Source.** Never guess or "remember" a melody. Use the user's melody (their notes/MIDI are the source of truth:
    keep BPM, pitches and lengths exactly), the user's own song, or a public-domain tune you can cite. No source:
    ask. Write the source in the report.
