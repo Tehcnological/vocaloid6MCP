@@ -1,0 +1,21 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+uv.lock
+
+# .NET build output
+bin/
+obj/
+.build/
+
+# editors / OS
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+skill/voicebanks.md
