@@ -56,8 +56,7 @@ def current_path() -> str:
 
 def _save_and_wait(path: str) -> None:
     before = os.path.getmtime(path) if os.path.exists(path) else None
-    if ui.save().get("unchanged"):
-        return
+    ui.save()
     # VOCALOID6 writes asynchronously; an unchanged project may not be rewritten at all
     end = time.time() + 5
     while time.time() < end and os.path.exists(path) and os.path.getmtime(path) == before:

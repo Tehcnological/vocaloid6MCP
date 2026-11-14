@@ -128,8 +128,8 @@ def on_home_screen(w=None) -> bool:
                    for e in w.descendants(control_type="Menu"))
 
 
-def _menu_path(w, path: list[str], disabled_ok: bool = False):
-    """Open each menu level and invoke the last item. Returns None if it is disabled and disabled_ok."""
+def _menu_path(w, path: list[str]):
+    """Open each menu level and invoke the last item."""
     _ensure_idle(w)
     if on_home_screen(w):
         raise VocaloidError("VOCALOID6 shows its Home screen; open or create a project first",
@@ -157,8 +157,6 @@ def _menu_path(w, path: list[str], disabled_ok: bool = False):
         if name == path[-1]:
             if not item.is_enabled():
                 top.collapse()
-                if disabled_ok:
-                    return None
                 raise VocaloidError(f"{' > '.join(path)} is disabled right now", f"{' > '.join(path)} は現在使えません")
             _invoke(item)
         cur = item
@@ -195,6 +193,11 @@ def _ensure_idle(w) -> None:
         text = " ".join(_texts(d))
         if "Revert to the previously saved version" in text:
             _press(d, "OK")
+            _wait(lambda: d not in dialogs(w), 5)
+            continue
+        if d.element_info.automation_id == "xAddTrackDlg":
+            # sometimes left open (cause not found); it changes nothing until Create is pressed
+            _press(d, "Cancel")
             _wait(lambda: d not in dialogs(w), 5)
             continue
         raise VocaloidError(f"A dialog is open in VOCALOID6: {d.window_text()!r} ({text}). Close it first",
@@ -312,8 +315,7 @@ def save() -> dict:
     if not name or name == "Untitled":
         raise VocaloidError("The project has never been saved: call save_project with a path",
                             "プロジェクトがまだ保存されていません。path を指定して save_project を呼んでください")
-    if _menu_path(w, ["File", "Save"], disabled_ok=True) is None:
-        return {"saved": name, "unchanged": True}  # VOCALOID6 disables Save when nothing changed
+    _menu_path(w, ["File", "Save"])
     time.sleep(0.5)
     if any(d.element_info.class_name == SELECTORS["file_dialog_class"] for d in dialogs(w)):
         for d in dialogs(w):
