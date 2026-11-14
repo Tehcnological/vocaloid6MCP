@@ -67,8 +67,16 @@ claude mcp add vocaloid6 -- "C:\path\to\vocaloid6-mcp\.venv\Scripts\vocaloid6-mc
 }
 ```
 
-Optional environment variable: `VOCALOID6_EXE` (path to `VOCALOID6.exe`). Optionally copy `skill/SKILL.md` into
-your Claude skills folder (e.g. `.claude/skills/vocaloid6/SKILL.md`).
+Optional environment variable: `VOCALOID6_EXE` (path to `VOCALOID6.exe`). Optionally copy the `skill` folder into
+your Claude skills folder (e.g. `.claude/skills/vocaloid6/`). Its `scripts/` are the song tools the skill uses for
+songs over a backing track: `analyze_backing.py` (tempo, beat 1, key, chords per bar, chord loop), `check8.py` (8-bar
+click + scale check), `assemble.py` and `mix.py` (stem placement and vocal mix). They are not part of the server and
+need their own Python with `librosa` and `soundfile`, plus ffmpeg on PATH:
+
+```bash
+python -m venv %LOCALAPPDATA%\song-analysisenv
+%LOCALAPPDATA%\song-analysisenv\Scripts\pip install librosa soundfile
+```
 
 ## Usage
 

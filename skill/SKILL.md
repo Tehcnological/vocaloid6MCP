@@ -82,13 +82,37 @@ point. Read back with `get_curve`.
 - Report: source of the melody, singer and language, lyric table, what expression you added, the files written,
   and anything not checked by ear.
 
-## 5b. Songs over a backing track / 伴奏に合わせた曲
+## 5b. Songs over a backing track: the song analysis tool / 伴奏に合わせた曲
 
-Never guess tempo, beat, key or chords of a backing track: measure them (a beat/key/chord analysis, e.g. with
-librosa: tempo fitted to a constant grid, beat 1, key, chord per bar), then send the user 8 bars of backing + click +
-the key's scale to confirm by ear before writing a note. Put song bar 0 on a measured bar line, keep long notes on
-chord tones, build one chorus first and iterate on it, then write the rest. Render stems with
-`export_wav(output, tracks=[...])` and mix them outside VOCALOID6.
+**Never guess tempo, beat, key or chords; measure them, and let the user confirm by ear before writing a note.**
+Beat trackers can lock onto a related tempo (2:1 or 3:2): vocals written on a wrong grid never sit in time, however
+good the melody is.
+
+Setup once (a separate Python, not part of the MCP server):
+`python -m venv %LOCALAPPDATA%\song-analysis\venv` then
+`%LOCALAPPDATA%\song-analysis\venv\Scripts\pip install librosa soundfile`. Run the scripts with that python
+(`PY` below); ffmpeg must be on PATH.
+
+1. `PY scripts/analyze_backing.py TRACK.wav [--speed 1.25] --json facts.json`: tempo fitted to a constant grid (and
+   how far the real beats stray from it: "steady" means a fixed-tempo editor can follow), beat 1, key with
+   confidence (r above ~0.75 is clear), tuning offset, chord per bar, the repeating chord loop, loudness per bar.
+   `--speed` gives the numbers for the track sped up with pitch kept (`ffmpeg -af atempo=1.25`).
+   `--table *.wav` makes a tempo/key table when the user is choosing a backing.
+2. `PY scripts/check8.py TRACK.wav facts.json check.wav [start_bar]`: 8 bars of backing + click (high = beat 1) + the
+   key's scale. Send it; the user confirms "in time and in tune" in seconds. Fix the analysis before going on.
+3. Put song bar 0 on a measured bar line (sections start where the chord loop starts) and use only chord tones or
+   short passing steps for long notes. Build **one chorus first** (8 bars, 2 bars of lead-in) and iterate on it;
+   write the rest only once the user likes the hook.
+4. Stems: `export_wav(output, tracks=[...])` per voice group (lead, harmony, answer, ...). Mix with
+   `PY scripts/assemble.py` (lay takes on the song timeline, `file@offset_s`) and `PY scripts/mix.py backing lead
+   harmony out bpm [answer]` (reverb, 1/8-note echo, harmony width, backing EQ dip and ducking), then
+   `ffmpeg -af loudnorm=I=-14:TP=-1.0`. Per-stem ffmpeg filters before mixing:
+   lead `highpass=f=120,deesser=i=0.4,acompressor=threshold=-22dB:ratio=2.5:attack=8:release=120:makeup=3,highshelf=f=10000:g=2`;
+   harmony `highpass=f=200,acompressor=threshold=-24dB:ratio=3:attack=8:release=120:makeup=3`;
+   answer voice `highpass=f=250,acompressor=threshold=-20dB:ratio=3:attack=3:release=80:makeup=3,highshelf=f=6000:g=2`.
+   Lead vocals end up about +5 dB (RMS) over the backing; harmony about 12 dB under the lead.
+5. Clarity: keep the verse to one voice (same-voice harmony in the lead's range blurs the words), keep words that
+   start with a vowel after "-ng" off the bottom of the range, and keep breathiness low (~10) on lines that must read.
 
 ## 6. Recovery / 復旧
 

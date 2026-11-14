@@ -67,8 +67,16 @@ claude mcp add vocaloid6 -- "C:\path\to\vocaloid6-mcp\.venv\Scripts\vocaloid6-mc
 }
 ```
 
-任意の環境変数：`VOCALOID6_EXE`（`VOCALOID6.exe` のパス）。`skill/SKILL.md` を Claude のスキルフォルダ
-（例 `.claude/skills/vocaloid6/SKILL.md`）にコピーすると手順書として使えます。
+任意の環境変数：`VOCALOID6_EXE`（`VOCALOID6.exe` のパス）。`skill` フォルダを Claude のスキルフォルダ
+（例 `.claude/skills/vocaloid6/`）にコピーすると手順書として使えます。`scripts/` は伴奏に合わせた曲づくりに使うツールです：
+`analyze_backing.py`（テンポ・1拍目・調・小節ごとのコード・コード進行のループ）、`check8.py`（8小節のクリック＋音階チェック）、
+`assemble.py` と `mix.py`（ステムの配置とボーカルのミックス）。サーバーの一部ではなく、`librosa` と `soundfile` を入れた
+別の Python と、PATH 上の ffmpeg が必要です：
+
+```bash
+python -m venv %LOCALAPPDATA%\song-analysisenv
+%LOCALAPPDATA%\song-analysisenv\Scripts\pip install librosa soundfile
+```
 
 ## 使い方
 
