@@ -117,7 +117,8 @@ banks the language is guessed from the bank name (`language_source: "name"`).
   (e.g. `A4:1 A4:1 B4:2 r:1`)
 - **Curves**: `set_curve`, `get_curve`, `clear_curve` (dynamics, pitchBend, pitchBendSens, breathiness, brightness,
   clearness, portamento, growl, xSynth, character, air, exciter)
-- **Playback / export**: `play`, `stop`, `export_wav`, `export_midi`, `import_midi`, `export_vsqx`
+- **Playback / export**: `play`, `stop`, `export_wav` (`tracks=[...]` renders stems: only those tracks, mute/solo
+  restored afterwards), `export_midi`, `import_midi`, `export_vsqx`
 - **Utilities**: `note_to_midi`, `midi_to_note`, `beats_to_ticks`, `ticks_to_beats`, `split_lyrics`
 
 ## Safety
@@ -142,7 +143,8 @@ With `lxml` installed the VSQX output is validated against Yamaha's `vsq3.xsd` /
 ## Limits
 
 - Live tools bring VOCALOID6's window to the front while they open its menus. Keys you type at that moment go to
-  VOCALOID6 (a shortcut can open a dialog that blocks the next step; the tools then report the dialog). Leave the
+  VOCALOID6 (a shortcut can open a dialog that blocks the next step: a leftover Open/Save dialog or its "File not
+  found" box is closed automatically, other dialogs are reported). Leave the
   keyboard alone while a live tool runs, and especially during `tests/e2e_test.py --live`.
 - Live tools need VOCALOID6's window (not minimised to a dialog-blocked state); a VOCALOID6 update can move menus
   (run `self_check`). The `.vpr` tools keep working regardless.

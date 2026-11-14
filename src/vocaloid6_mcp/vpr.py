@@ -321,6 +321,24 @@ def set_track(seq: dict, track: int, name: str | None = None, mute: bool | None 
     return t
 
 
+def only_tracks(seq: dict, tracks: list[int]) -> list[tuple[bool, bool]]:
+    """Mute every track not in `tracks` and clear solo (for stem export). Returns the old (muted, solo) per track."""
+    if not tracks:
+        raise VocaloidError("Give at least one track", "トラックを1つ以上指定してください")
+    for i in tracks:
+        _track(seq, i)
+    saved = [(t.get("isMuted", False), t.get("isSoloMode", False)) for t in seq["tracks"]]
+    for i, t in enumerate(seq["tracks"]):
+        t["isMuted"], t["isSoloMode"] = i not in tracks, False
+    return saved
+
+
+def restore_tracks(seq: dict, saved: list[tuple[bool, bool]]) -> None:
+    """Undo only_tracks."""
+    for t, (muted, solo) in zip(seq["tracks"], saved):
+        t["isMuted"], t["isSoloMode"] = muted, solo
+
+
 def remove_track(seq: dict, track: int) -> None:
     _track(seq, track)
     del seq["tracks"][int(track)]

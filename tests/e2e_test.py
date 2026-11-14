@@ -292,6 +292,11 @@ async def live_tests(c: Client, tmp: str, ctx: dict):
     wav = os.path.join(tmp, "export.wav")
     r = await c("export_wav", output=wav)
     ok(r["bytes"] > 10000, f"export_wav ({r['seconds']} s)", r)
+    muted = [x["muted"] for x in (await c("get_project"))["tracks"]]
+    stem = os.path.join(tmp, "stem.wav")
+    r = await c("export_wav", output=stem, tracks=[t])
+    ok(r["bytes"] > 10000 and r["tracks"] == [t], "export_wav of one track (stem)", r)
+    ok([x["muted"] for x in (await c("get_project"))["tracks"]] == muted, "stem export restores mute states")
     src = os.path.join(tmp, "import.mid")
     if write_midi(src):
         n = len((await c("get_project"))["tracks"])
@@ -311,8 +316,22 @@ async def live_tests(c: Client, tmp: str, ctx: dict):
     await c("open_project", path=path, force=True)
 
 
+def unit_tests():
+    print("[stem helpers]")
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    from vocaloid6_mcp import vpr
+    seq = {"tracks": [{"isMuted": False, "isSoloMode": True}, {"isMuted": True}, {}]}
+    saved = vpr.only_tracks(seq, [1])
+    ok([(t["isMuted"], t["isSoloMode"]) for t in seq["tracks"]] == [(True, False), (False, False), (True, False)],
+       "only_tracks mutes the others and clears solo", seq)
+    vpr.restore_tracks(seq, saved)
+    ok([(t["isMuted"], t["isSoloMode"]) for t in seq["tracks"]] == [(False, True), (True, False), (False, False)],
+       "restore_tracks puts mute/solo back", seq)
+
+
 async def main():
     live = "--live" in sys.argv
+    unit_tests()
     tmp = tempfile.mkdtemp(prefix="vocaloid6_mcp_test_")
     exe = os.path.join(ROOT, ".venv", "Scripts", "vocaloid6-mcp.exe")
     params = StdioServerParameters(command=exe if os.path.isfile(exe) else sys.executable,

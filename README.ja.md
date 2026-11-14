@@ -113,7 +113,8 @@ Claude にこう頼めます。
 - **トラック・パート**：`add_track`、`edit_track`、`remove_track`、`add_part`、`edit_part`、`remove_part`、`fit_part`
 - **音符・歌詞**：`list_notes`、`add_notes`、`edit_notes`、`delete_notes`、`assign_lyrics`、`add_melody`（例 `A4:1 A4:1 B4:2 r:1`）
 - **カーブ**：`set_curve`、`get_curve`、`clear_curve`
-- **再生・書き出し**：`play`、`stop`、`export_wav`、`export_midi`、`import_midi`、`export_vsqx`
+- **再生・書き出し**：`play`、`stop`、`export_wav`（`tracks=[...]` でそのトラックだけのステムを書き出し、ミュート・ソロは後で元に戻ります）、
+  `export_midi`、`import_midi`、`export_vsqx`
 - **ユーティリティ**：`note_to_midi`、`midi_to_note`、`beats_to_ticks`、`ticks_to_beats`、`split_lyrics`
 
 ## 安全性
@@ -138,7 +139,8 @@ uv pip install -e ".[kanji,test]"
 ## 制限
 
 - ライブツールはメニューを開く間 VOCALOID6 のウィンドウを前面に出します。そのときの入力は VOCALOID6 に届き、ショートカットで
-  開いたダイアログが次の操作を妨げることがあります（その場合ツールがダイアログを報告します）。ライブツールの実行中、特に
+  開いたダイアログが次の操作を妨げることがあります（残った「開く」「保存」ダイアログとその「ファイルが見つかりません」は自動で閉じ、
+  それ以外のダイアログは報告します）。ライブツールの実行中、特に
   `tests/e2e_test.py --live` の間はキーボードに触れないでください。
 - ライブツールには VOCALOID6 のウィンドウが必要です。VOCALOID6 の更新でメニューが変わることがあります（`self_check` で確認）。
   `.vpr` のツールは影響を受けません。

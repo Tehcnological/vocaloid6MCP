@@ -440,9 +440,14 @@ def stop() -> dict:
 
 
 @_tool()
-def export_wav(output: str, bypass_effects: bool = False, timeout_seconds: int = 600) -> dict:
-    """Render the main mix of the open project to a WAV file (Audio Mixdown). Can take a while.
-    / 開いているプロジェクトのメインミックスを WAV に書き出します（時間がかかることがあります）"""
+def export_wav(output: str, tracks: list[int] | None = None, bypass_effects: bool = False,
+               timeout_seconds: int = 600) -> dict:
+    """Render the main mix of the open project to a WAV file (Audio Mixdown). Can take a while. tracks=[...] renders
+    only those tracks (a stem): the others are muted for the export, then mute/solo are restored.
+    / 開いているプロジェクトのメインミックスを WAV に書き出します（時間がかかることがあります）。tracks=[...] で
+    そのトラックだけを書き出します（ステム）。他のトラックは書き出しの間だけミュートし、後で元に戻します。"""
+    if tracks:
+        return ui.run(live.export_tracks, output, tracks, bypass_effects, timeout_seconds, timeout=timeout_seconds + 120)
     return ui.run(ui.export_wav, output, bypass_effects, timeout_seconds, timeout=timeout_seconds + 60)
 
 

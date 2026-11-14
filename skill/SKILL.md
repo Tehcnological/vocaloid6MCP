@@ -75,10 +75,20 @@ point. Read back with `get_curve`.
 
 ## 5. Export & report / 書き出しと報告
 
-- `export_wav(output)` renders the main mix (seconds to minutes). `export_midi` for a DAW. `export_vsqx(version=4)`
-  for the VOCALOID4 editor (classic tracks only; AI tracks are skipped).
+- `export_wav(output)` renders the main mix (seconds to minutes). `export_wav(output, tracks=[0, 1])` renders only
+  those tracks (a stem; the others are muted for the export and mute/solo are restored). `export_midi` for a DAW.
+  `export_vsqx(version=4)` for the VOCALOID4 editor (classic tracks only; AI tracks are skipped).
+- Live tools close a leftover Open/Save dialog (and its "File not found" box) by themselves; other dialogs stop them.
 - Report: source of the melody, singer and language, lyric table, what expression you added, the files written,
   and anything not checked by ear.
+
+## 5b. Songs over a backing track / 伴奏に合わせた曲
+
+Never guess tempo, beat, key or chords of a backing track: measure them (a beat/key/chord analysis, e.g. with
+librosa: tempo fitted to a constant grid, beat 1, key, chord per bar), then send the user 8 bars of backing + click +
+the key's scale to confirm by ear before writing a note. Put song bar 0 on a measured bar line, keep long notes on
+chord tones, build one chorus first and iterate on it, then write the rest. Render stems with
+`export_wav(output, tracks=[...])` and mix them outside VOCALOID6.
 
 ## 6. Recovery / 復旧
 

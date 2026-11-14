@@ -206,14 +206,27 @@ def _ensure_idle(w) -> None:
             _press(d, "Cancel")
             _wait(lambda: d not in dialogs(w), 5)
             continue
+        if _is_file_dialog(d):
+            # a leftover Open/Save dialog (e.g. keys typed into it while a live tool ran): close its message box
+            # ("File not found") first, then cancel the dialog itself; nothing is opened or saved
+            for box in [c for c in d.children() if c.element_info.control_type == "Window"]:
+                _press(box, "OK", "Close")
+            _wait(lambda: not [c for c in d.children() if c.element_info.control_type == "Window"], 3)
+            _press(d, "Cancel")
+            _wait(lambda: d not in dialogs(w), 5)
+            continue
         raise VocaloidError(f"A dialog is open in VOCALOID6: {d.window_text()!r} ({text}). Close it first",
                             f"VOCALOID6 でダイアログが開いています: {d.window_text()!r}（{text}）。先に閉じてください")
 
 
+def _is_file_dialog(d) -> bool:
+    return d.element_info.class_name == SELECTORS["file_dialog_class"] and any(
+        e.element_info.automation_id in SELECTORS["file_name_edit_ids"] for e in d.descendants(control_type="Edit"))
+
+
 def _message_box(w):
     for d in dialogs(w):
-        if d.element_info.class_name == SELECTORS["file_dialog_class"] and not any(
-                e.element_info.automation_id in SELECTORS["file_name_edit_ids"] for e in d.descendants(control_type="Edit")):
+        if d.element_info.class_name == SELECTORS["file_dialog_class"] and not _is_file_dialog(d):
             return d
     return None
 
