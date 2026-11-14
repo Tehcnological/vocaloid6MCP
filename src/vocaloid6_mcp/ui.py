@@ -128,8 +128,9 @@ def on_home_screen(w=None) -> bool:
                    for e in w.descendants(control_type="Menu"))
 
 
-def _menu_path(w, path: list[str]):
-    """Open each menu level and invoke the last item."""
+def _menu_path(w, path: list[str], deadline: float | None = None):
+    """Open each menu level and invoke the last item (waiting up to 15 s for it to become enabled)."""
+    deadline = deadline if deadline is not None else time.time() + 15
     _ensure_idle(w)
     if on_home_screen(w):
         raise VocaloidError("VOCALOID6 shows its Home screen; open or create a project first",
@@ -157,7 +158,12 @@ def _menu_path(w, path: list[str]):
         if name == path[-1]:
             if not item.is_enabled():
                 top.collapse()
-                raise VocaloidError(f"{' > '.join(path)} is disabled right now", f"{' > '.join(path)} は現在使えません")
+                # VOCALOID6 disables menus for a while after loading a project: try again until it is ready
+                if time.time() < deadline:
+                    time.sleep(1)
+                    return _menu_path(w, path, deadline)
+                raise VocaloidError(f"{' > '.join(path)} stayed disabled (VOCALOID6 busy?)",
+                                    f"{' > '.join(path)} が使えないままです（VOCALOID6 が処理中？）")
             _invoke(item)
         cur = item
     return cur

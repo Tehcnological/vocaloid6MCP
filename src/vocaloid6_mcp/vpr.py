@@ -22,7 +22,10 @@ from .errors import VocaloidError
 from .lyrics import LANG_NAMES, lang_id
 
 SEQ = "Project/sequence.json"
-PLACEHOLDER = "a"  # replaced by VOCALOID6's own pronunciation when it loads the file
+PLACEHOLDER = "a"
+# VOCALOID6 resets every AI part's singer to its default AI voice when the file says version 5.x, so files with AI
+# tracks declare the version VOCALOID6 6.13 itself writes. Classic-only files stay 5.0.0 so VOCALOID5 can open them.
+V6_VERSION = {"major": 6, "minor": 5, "revision": 1}  # replaced by VOCALOID6's own pronunciation when it loads the file
 TYPE_NAMES = {0: "VOCALOID", 1: "audio", 2: "VOCALOID:AI"}
 # name -> (min, max, default). Ranges of the classic VOCALOID parameters; the AI-only ones (air, exciter) are
 # assumed to share the 0..127 range of the classic sliders.
@@ -57,6 +60,8 @@ def save(path: str, seq: dict) -> str:
     path = os.path.abspath(path)
     if not path.lower().endswith(".vpr"):
         raise VocaloidError(f"Project path must end with .vpr: {path}", f"プロジェクトのパスは .vpr で終わる必要があります: {path}")
+    if any(t.get("type") == 2 for t in seq.get("tracks", [])):
+        _require_v6(seq)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     fd, tmp = tempfile.mkstemp(suffix=".vpr", dir=os.path.dirname(path))
     os.close(fd)
@@ -239,6 +244,12 @@ def summary(seq: dict) -> dict:
 
 
 # ----------------------------------------------------------------------------- tracks & parts
+
+def _require_v6(seq: dict) -> None:
+    v = seq.get("version") or {}
+    if (v.get("major", 0), v.get("minor", 0), v.get("revision", 0)) < tuple(V6_VERSION.values()):
+        seq["version"] = dict(V6_VERSION)
+
 
 def _register_voice(seq: dict, bank: dict) -> None:
     voices = seq.setdefault("voices", [])

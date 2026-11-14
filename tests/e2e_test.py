@@ -89,7 +89,8 @@ async def file_tests(c: Client, tmp: str) -> dict:
     print("[voicebanks]")
     banks = await c("list_voicebanks")
     ok(len(banks) > 0, "at least one VOCALOID3-6 voicebank installed (the tests need one)", banks)
-    ai = next((b for b in banks if b["kind"] == "ai"), None)
+    ais = [b for b in banks if b["kind"] == "ai"]
+    ai = ais[-1] if ais else None  # not the first: VOCALOID6 falls back to its default AI voice, which hides swaps
     classic = next((b for b in banks if b["kind"] == "classic" and b["languages"] == ["ja"]), None) or \
         next((b for b in banks if b["kind"] == "classic"), None)
     english = next((b for b in banks if b["kind"] == "classic" and "en" in b["languages"]), None)
@@ -104,6 +105,7 @@ async def file_tests(c: Client, tmp: str) -> dict:
     path = os.path.join(tmp, "test_song.vpr")
     r = await c("new_project", path=path, bpm=128)
     ok(r["summary"]["tempo"][0]["bpm"] == 128, "new_project at 128 BPM")
+    ok(r["summary"]["file_version"] == "5.0.0", "a new project is VOCALOID5-compatible", r["summary"])
     err = await c.error("new_project", path=path)
     ok("overwrite" in err, "new_project refuses to overwrite")
     tracks = {}
@@ -122,6 +124,8 @@ async def file_tests(c: Client, tmp: str) -> dict:
         tracks["english"] = r["result"]["track"]
     proj = await c("get_project", path=path)
     ok(len(proj["tracks"]) == len(tracks), f"{len(tracks)} tracks added", proj)
+    if ai:
+        ok(proj["file_version"] == "6.5.1", "a project with an AI track declares VOCALOID6 6.5.1", proj["file_version"])
     for key, ti in tracks.items():
         want = "VOCALOID:AI" if key == "ai" else "VOCALOID"
         ok(proj["tracks"][ti]["type"] == want, f"{key} track is {want}")
@@ -241,6 +245,10 @@ async def live_tests(c: Client, tmp: str, ctx: dict):
     proj = await c("get_project")
     ok(proj["path"].lower() == path.lower(), "live get_project knows the file", proj["path"])
     ok(len(proj["tracks"]) == len(ctx["tracks"]), "all tracks survived loading", proj)
+    for key, bank in (("ai", ctx["ai"]), ("classic", ctx["classic"]), ("english", ctx["english"])):
+        if key in ctx["tracks"]:
+            voice = proj["tracks"][ctx["tracks"][key]]["parts"][0]["voice"]
+            ok(voice == bank["name"], f"VOCALOID6 keeps the {key} singer {bank['name']}", voice)
     t = ctx["tracks"].get("ai", ctx["tracks"].get("classic"))
     notes = await c("list_notes", track=t, part=0)
     ok(all(n["phoneme"] for n in notes), "every note has a phoneme after loading", notes)
