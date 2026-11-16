@@ -8,15 +8,14 @@ import psutil
 
 from . import ui
 from .errors import VocaloidError
-from .voicebanks import known_dir
+from .winpaths import known_dir
 
 
 def find_exe() -> str | None:
     candidates = [os.environ.get("VOCALOID6_EXE")]
     for base in (known_dir("ProgramFiles", "ProgramFilesDir", "Program Files"),
                  known_dir("ProgramFiles(x86)", "ProgramFilesDir (x86)", "Program Files (x86)")):
-        if base:
-            candidates.append(os.path.join(base, "VOCALOID6", "Editor", "VOCALOID6.exe"))
+        candidates.append(os.path.join(base, "VOCALOID6", "Editor", "VOCALOID6.exe"))
     return next((c for c in candidates if c and os.path.isfile(c)), None)
 
 
@@ -71,7 +70,8 @@ def spawn(args: list[str], cwd: str) -> list[str]:
         started = None  # WMI may still be creating it: wait longer before trying another way
     except OSError:
         started = False
-    for _ in range(10 if started else 30 if started is None else 5):  # a slow WMI call may still have started it: never start a second copy
+    # a slow WMI call may still have started it: never start a second copy
+    for _ in range(10 if started else 30 if started is None else 5):
         if processes():
             return []
         time.sleep(1)
