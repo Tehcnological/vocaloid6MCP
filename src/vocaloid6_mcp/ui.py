@@ -245,6 +245,14 @@ def _message_box(w):
     return None
 
 
+def _press_id(d, *ids) -> bool:
+    for b in d.descendants(control_type="Button"):
+        if b.element_info.automation_id in ids:
+            _invoke(b)
+            return True
+    return False
+
+
 def _press(d, *labels) -> bool:
     for b in d.descendants(control_type="Button"):
         if b.window_text().replace("&", "") in labels:
@@ -304,11 +312,12 @@ def _resolve_unsaved_prompt(w, force: bool) -> bool:
     if not box:
         return False
     text = " ".join(_texts(box))
+    # message-box button ids (IDNO = 7, IDCANCEL = 2) work whatever the Windows display language; labels are a fallback
     if force:
-        if not (_press(box, "No", "Don't Save", "Discard") or _press(box, "OK")):
+        if not (_press_id(box, "7") or _press(box, "No", "Don't Save", "Discard") or _press(box, "OK")):
             raise VocaloidError(f"Unexpected dialog: {text}", f"予期しないダイアログ: {text}")
         return True
-    _press(box, "Cancel")
+    _press_id(box, "2") or _press(box, "Cancel")
     raise VocaloidError(
         f"VOCALOID6 has unsaved changes ({text.strip()}). Save them first, or pass force=true to discard them",
         f"VOCALOID6 に未保存の変更があります（{text.strip()}）。先に保存するか、破棄してよければ force=true を指定してください")
@@ -330,11 +339,7 @@ def finish_load(w, path: str) -> list[dict]:
         if not box or is_question(box):
             break
         msgs.append(" ".join(t for t in _texts(box) if t not in ("OK", "Close")))
-        ok = next((b for b in box.descendants(control_type="Button") if b.element_info.automation_id in ("1", "2")), None)
-        if ok:
-            _invoke(ok)
-        else:
-            _press(box, "OK", "Close")
+        _press_id(box, "1", "2") or _press(box, "OK", "Close")  # IDOK / an OK-only box's single button
         # w, not main_window(): finding the window takes seconds while VOCALOID6 sets up the project it falls back to
         _wait(lambda: box not in dialogs(w), 3)
         box = _wait(lambda: _message_box(w), 2)

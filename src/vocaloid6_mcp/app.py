@@ -10,12 +10,22 @@ from . import ui
 from .errors import VocaloidError
 
 
+def known_dir(env: str, reg_value: str) -> str | None:
+    """A Windows folder from its environment variable, else from the registry: MCP clients often start servers
+    with a short environment that has no ProgramFiles or CommonProgramFiles."""
+    if os.environ.get(env):
+        return os.environ[env]
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion") as k:
+            return winreg.QueryValueEx(k, reg_value)[0]
+    except (ImportError, OSError):
+        return None
+
+
 def find_exe() -> str | None:
     candidates = [os.environ.get("VOCALOID6_EXE")]
-    # MCP clients often start servers with a short env whitelist that has no ProgramFiles (but has SystemDrive)
-    drive = os.environ.get("SystemDrive", "C:") + os.sep
-    for base in (os.environ.get("ProgramFiles") or os.path.join(drive, "Program Files"),
-                 os.environ.get("ProgramFiles(x86)") or os.path.join(drive, "Program Files (x86)")):
+    for base in (known_dir("ProgramFiles", "ProgramFilesDir"), known_dir("ProgramFiles(x86)", "ProgramFilesDir (x86)")):
         if base:
             candidates.append(os.path.join(base, "VOCALOID6", "Editor", "VOCALOID6.exe"))
     return next((c for c in candidates if c and os.path.isfile(c)), None)
@@ -52,43 +62,32 @@ def status() -> dict:
 
 _SPAWN_PS = """
 $a = @{CommandLine = $env:MCP_SPAWN_CMD; CurrentDirectory = $env:MCP_SPAWN_DIR}
-if ($env:MCP_SPAWN_HIDE) {
-  $a.ProcessStartupInformation = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ShowWindow = [uint16]0}
-}
 try { $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments $a -ErrorAction Stop } catch { exit 1 }
 if ($null -eq $r) { exit 1 }
 exit $r.ReturnValue
 """
 
 
-def spawn(args: list[str], cwd: str, env_prefix: str | None = None) -> None:
+def spawn(args: list[str], cwd: str) -> list[str]:
     """Start the editor so it outlives this server. Some MCP clients (e.g. the official Python SDK on Windows) run
     the server in a job object that kills every child process when the client disconnects, which would close the
-    editor with unsaved work; Windows creates a process started through WMI outside that job. That process gets the
-    user's full environment; this server's variables whose names start with env_prefix are added by a hidden cmd
-    that then starts the editor (WMI's own environment option would replace the whole environment)."""
-    cmd = subprocess.list2cmdline(args)
-    # skip values cmd would expand or misquote (% and "); Windows paths cannot contain "
-    extra = {k: v for k, v in os.environ.items()
-             if env_prefix and k.upper().startswith(env_prefix) and not {'"', "%"} & set(v)}
-    wrap = bool(extra) and "%" not in cmd
-    if wrap:  # every argument in quotes, so cmd reads & | < > ^ in a path as text
-        cmd = ("cmd /c " + " && ".join(f'set "{k}={v}"' for k, v in extra.items())
-               + ' && start "" ' + " ".join(f'"{a}"' for a in args))
+    editor with unsaved work; Windows creates a process started through WMI outside that job, with the user's full
+    environment (a child process would get only the client's trimmed one). Returns warnings for the caller."""
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _SPAWN_PS], capture_output=True,
-                           env={**os.environ, "MCP_SPAWN_CMD": cmd, "MCP_SPAWN_DIR": cwd,
-                                "MCP_SPAWN_HIDE": "1" if wrap else ""},
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=60)
-        if r.returncode == 0:
-            return
+                           env={**os.environ, "MCP_SPAWN_CMD": subprocess.list2cmdline(args), "MCP_SPAWN_DIR": cwd},
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=20)
+        started = r.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
-        pass
-    for _ in range(5):  # a slow WMI call may still have started it: never start a second copy
+        started = False
+    for _ in range(10 if started else 5):  # a slow WMI call may still have started it: never start a second copy
         if processes():
-            return
+            return []
         time.sleep(1)
     subprocess.Popen(args, cwd=cwd, close_fds=True, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+    return ["Started as a child of this server: if the MCP client closes it, the editor may close too. "
+            "Save often. / このサーバーの子プロセスとして起動しました。MCP クライアントが終了すると"
+            "エディターも閉じることがあります。こまめに保存してください。"]
 
 
 def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
@@ -104,7 +103,7 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     if not exe:
         raise VocaloidError("VOCALOID6.exe not found; set the VOCALOID6_EXE environment variable",
                             "VOCALOID6.exe が見つかりません。環境変数 VOCALOID6_EXE を設定してください")
-    spawn([exe] + ([project_path] if project_path else []), os.path.dirname(exe))
+    warnings = spawn([exe] + ([project_path] if project_path else []), os.path.dirname(exe))
     deadline = time.time() + wait_seconds
     # with a project, wait for the editor window, not a Home window shown while it loads
     def ready():
@@ -114,6 +113,8 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
         time.sleep(1)
     time.sleep(3)  # let the window finish building
     out = {"launched": True}
+    if warnings:
+        out["warnings"] = warnings
     if project_path:
         def check_boxes():  # an error box: raise if the project did not open, else report it
             w = ui.main_window(required=False)

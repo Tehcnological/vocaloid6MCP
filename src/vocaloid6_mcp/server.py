@@ -2,6 +2,7 @@
 
 import functools
 import os
+import re
 
 import pydantic_core
 from .schema import FastMCP
@@ -166,7 +167,7 @@ def _guide_text() -> str:
         if os.path.isfile(p):
             with open(p, encoding="utf-8") as f:
                 text = f.read()
-            return (text.split("---", 2)[2].lstrip() if text.startswith("---") else text) + _GUIDE_NOTE
+            return re.sub(r"\A---\r?\n.*?\r?\n---[ \t]*\r?\n", "", text, count=1, flags=re.S).lstrip() + _GUIDE_NOTE
     raise VocaloidError("Usage guide not found", "使い方ガイドが見つかりません")
 
 

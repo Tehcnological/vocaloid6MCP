@@ -15,8 +15,10 @@ import shutil
 import sys
 import tempfile
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import get_default_environment, stdio_client
+from mcp import ClientSession
+from mcp.client.stdio import stdio_client
+
+from _server import server_params
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 XSD_DIR = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "VOCALOID6", "Editor")
@@ -372,11 +374,7 @@ async def main():
     live = "--live" in sys.argv
     unit_tests()
     tmp = tempfile.mkdtemp(prefix="vocaloid6_mcp_test_")
-    exe = os.path.abspath(os.environ.get("MCP_SERVER_EXE") or os.path.join(ROOT, ".venv", "Scripts", "vocaloid6-mcp.exe"))
-    params = StdioServerParameters(command=exe if os.path.isfile(exe) else sys.executable,
-                                   args=[] if os.path.isfile(exe) else ["-m", "vocaloid6_mcp.server"],
-                                   env={**get_default_environment(), "PYTHONIOENCODING": "utf-8",  # what MCP clients pass by default
-                                        **{k: v for k, v in os.environ.items() if k.startswith("VOCALOID6")}})
+    params = server_params()
     try:
         async with stdio_client(params) as (r, w), ClientSession(r, w) as s:
             await s.initialize()
