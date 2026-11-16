@@ -56,6 +56,9 @@ Never pass `force=true` unless the user agreed to lose unsaved work.
 - Keep the user's note lengths. Leave rests as gaps (`r:1` in `add_melody`); do not stretch notes over them.
 - Consonants start before the beat automatically; do not shift notes early to compensate.
 - Very short notes (< 120 ticks) on consonant-heavy syllables blur: merge or lengthen with the user's OK.
+- Imported UST/MIDI: a short rest inside a word may be a dropped melisma (the vowel moving to a new pitch), not a
+  pause. Compare with the original recording. Fix it with a `-` note at the new pitch filling the gap; closing the
+  gap by lengthening the note sounds wrong.
 
 ## 4. Expression / 表情
 
