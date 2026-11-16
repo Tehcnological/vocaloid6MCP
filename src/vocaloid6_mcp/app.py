@@ -115,12 +115,13 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     time.sleep(3)  # let the window finish building
     out = {"launched": True}
     if project_path:
-        def check_error():  # the project failed to load: VOCALOID6 shows an error box over its Home window
+        def check_boxes():  # an error box: raise if the project did not open, else report it
             w = ui.main_window(required=False)
-            box = w and not ui.is_editor(w) and ui._message_box(w)
-            if box:
-                ui.load_error(box, project_path)
-        ui.run(check_error)
+            box = w and ui._message_box(w)
+            return ui.finish_load(w, project_path) if box and not ui.is_question(box) else []
+        notes = ui.run(check_boxes)
+        if notes:
+            out["dialogs"] = notes
         stem = os.path.splitext(os.path.basename(project_path))[0]
         if ui.run(lambda: ui.project_name()) != stem:
             out.update(ui.run(ui.open_project, project_path))
