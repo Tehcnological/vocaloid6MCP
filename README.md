@@ -50,17 +50,16 @@ it in a folder of your choice, e.g. `C:\Tools\`. The command is the path to the 
 - Japanese kanji-to-kana support (`pykakasi`) is built in.
 
 **B. uvx, always the latest code.** Needs [uv](https://docs.astral.sh/uv/). Nothing to clone; uv downloads and caches
-the server the first time the client starts it. The command is `uvx` with these arguments (replace `<owner>` with the
-GitHub account this repository belongs to):
+the server the first time the client starts it. The command is `uvx` with these arguments:
 
 ```text
---from "vocaloid6-mcp[kanji] @ git+https://github.com/<owner>/vocaloid6MCP" vocaloid6-mcp
+--from "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP" vocaloid6-mcp
 ```
 
 **C. From a clone (to change the code).** Needs Python 3.11+ and uv:
 
 ```bash
-git clone <this repo> vocaloid6-mcp
+git clone https://github.com/Tehcnological/vocaloid6MCP vocaloid6-mcp
 ```
 
 ```bash
@@ -90,7 +89,7 @@ file. In JSON every `\` in a path is written `\\`.
 }
 ```
 
-Route B: `"command": "uvx", "args": ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/<owner>/vocaloid6MCP", "vocaloid6-mcp"]`.
+Route B: `"command": "uvx", "args": ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP", "vocaloid6-mcp"]`.
 
 | Client | Config file (merge the `vocaloid6` entry into `mcpServers`) |
 |---|---|
@@ -108,7 +107,7 @@ claude mcp add --scope user vocaloid6 -- "C:\Tools\vocaloid6-mcp.exe"
 ```
 
 ```bash
-claude mcp add --scope user vocaloid6 -- uvx --from "vocaloid6-mcp[kanji] @ git+https://github.com/<owner>/vocaloid6MCP" vocaloid6-mcp
+claude mcp add --scope user vocaloid6 -- uvx --from "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP" vocaloid6-mcp
 ```
 
 **VS Code (GitHub Copilot, agent mode)**: Command Palette, **MCP: Open User Configuration** (or `.vscode\mcp.json` in
@@ -140,7 +139,7 @@ mcpServers:
     command: 'C:\Tools\vocaloid6-mcp.exe'
 ```
 
-Route B: `command: uvx` and `args: ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/<owner>/vocaloid6MCP", "vocaloid6-mcp"]`.
+Route B: `command: uvx` and `args: ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP", "vocaloid6-mcp"]`.
 
 **Codex CLI**: add to `%USERPROFILE%\.codex\config.toml` (in TOML, single quotes keep `\` as is):
 
@@ -150,7 +149,7 @@ command = 'C:\Tools\vocaloid6-mcp.exe'
 tool_timeout_sec = 300  # live edits and WAV export can take longer than the 60 s default
 ```
 
-Route B: `command = "uvx"` and `args = ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/<owner>/vocaloid6MCP", "vocaloid6-mcp"]`.
+Route B: `command = "uvx"` and `args = ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP", "vocaloid6-mcp"]`.
 Or in one step: `codex mcp add vocaloid6 -- "C:\Tools\vocaloid6-mcp.exe"` (then add `tool_timeout_sec` by hand).
 
 Optional environment variable: `VOCALOID6_EXE` (path to `VOCALOID6.exe`). Add it as `"env": {"VOCALOID6_EXE":
@@ -190,7 +189,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 ```
 
 It needs uv and writes `dist\vocaloid6-mcp.exe` (PyInstaller, about 20 MB), `SHA256SUMS.txt` and the list of packages
-inside. Pushing a tag such as `v0.2.0` runs the same script on GitHub Actions and attaches the files to a draft
+inside. Pushing a tag such as `v0.4.0` runs the same script on GitHub Actions and attaches the files to a draft
 release, which you publish by hand.
 
 ## Usage

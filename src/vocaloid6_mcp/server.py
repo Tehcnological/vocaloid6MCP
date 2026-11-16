@@ -6,7 +6,7 @@ import os
 from .schema import FastMCP
 from pydantic import BaseModel, Field
 
-from . import app, live, music, ui, voicebanks, vpr, vsqx
+from . import __version__, app, live, music, ui, voicebanks, vpr, vsqx
 from . import lyrics as lyric_text
 from .errors import VocaloidError
 
@@ -49,6 +49,7 @@ VOCALOID6 を操作し、VOCALOID3/4/5/6 のプロジェクトを英語・日本
 """
 
 mcp = FastMCP("vocaloid6", instructions=INSTRUCTIONS, log_level="WARNING")
+mcp._mcp_server.version = __version__  # FastMCP would report the MCP SDK's version
 
 
 def _tool():

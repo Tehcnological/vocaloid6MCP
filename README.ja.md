@@ -51,17 +51,16 @@ VOCALOID6 にはプラグインの仕組みがなく、ライセンスでリバ�
 - 漢字をかなに変換する機能（`pykakasi`）が入っています。
 
 **B. uvx（常に最新のコード）。** [uv](https://docs.astral.sh/uv/) が必要です。クローン不要で、クライアントが初めて
-起動したときに uv がサーバーをダウンロードしてキャッシュします。コマンドは `uvx`、引数は次のとおりです
-（`<owner>` はこのリポジトリがある GitHub アカウント名に置き換えます）。
+起動したときに uv がサーバーをダウンロードしてキャッシュします。コマンドは `uvx`、引数は次のとおりです。
 
 ```text
---from "vocaloid6-mcp[kanji] @ git+https://github.com/<owner>/vocaloid6MCP" vocaloid6-mcp
+--from "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP" vocaloid6-mcp
 ```
 
 **C. クローンから（コードを変更する場合）。** Python 3.11 以上と uv が必要です。
 
 ```bash
-git clone <このリポジトリ> vocaloid6-mcp
+git clone https://github.com/Tehcnological/vocaloid6MCP vocaloid6-mcp
 ```
 
 ```bash
@@ -91,7 +90,7 @@ JSON ではパスの `\` を `\\` と書きます。
 }
 ```
 
-B の場合：`"command": "uvx", "args": ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/<owner>/vocaloid6MCP", "vocaloid6-mcp"]`。
+B の場合：`"command": "uvx", "args": ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP", "vocaloid6-mcp"]`。
 
 | クライアント | 設定ファイル（`mcpServers` に `vocaloid6` の項目を追加） |
 |---|---|
@@ -109,7 +108,7 @@ claude mcp add --scope user vocaloid6 -- "C:\Tools\vocaloid6-mcp.exe"
 ```
 
 ```bash
-claude mcp add --scope user vocaloid6 -- uvx --from "vocaloid6-mcp[kanji] @ git+https://github.com/<owner>/vocaloid6MCP" vocaloid6-mcp
+claude mcp add --scope user vocaloid6 -- uvx --from "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP" vocaloid6-mcp
 ```
 
 **VS Code（GitHub Copilot のエージェントモード）**：コマンドパレットで **MCP: Open User Configuration**
@@ -141,7 +140,7 @@ mcpServers:
     command: 'C:\Tools\vocaloid6-mcp.exe'
 ```
 
-B の場合：`command: uvx` と `args: ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/<owner>/vocaloid6MCP", "vocaloid6-mcp"]`。
+B の場合：`command: uvx` と `args: ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP", "vocaloid6-mcp"]`。
 
 **Codex CLI**：`%USERPROFILE%\.codex\config.toml` に追加します（TOML では単一引用符で囲むと `\` をそのまま書けます）。
 
@@ -151,7 +150,7 @@ command = 'C:\Tools\vocaloid6-mcp.exe'
 tool_timeout_sec = 300  # ライブ編集や WAV 書き出しは既定の 60 秒を超えることがあります
 ```
 
-B の場合：`command = "uvx"` と `args = ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/<owner>/vocaloid6MCP", "vocaloid6-mcp"]`。
+B の場合：`command = "uvx"` と `args = ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP", "vocaloid6-mcp"]`。
 1行で登録するなら `codex mcp add vocaloid6 -- "C:\Tools\vocaloid6-mcp.exe"`（`tool_timeout_sec` は後から手で追加）。
 
 任意の環境変数：`VOCALOID6_EXE`（`VOCALOID6.exe` のパス）。JSON では `"env": {"VOCALOID6_EXE":
@@ -191,7 +190,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 ```
 
 uv が必要です。`dist\vocaloid6-mcp.exe`（PyInstaller、約 20 MB）、`SHA256SUMS.txt`、中に入ったパッケージの一覧を
-作ります。`v0.2.0` のようなタグを push すると GitHub Actions が同じスクリプトを実行し、ファイルを下書きのリリースに
+作ります。`v0.4.0` のようなタグを push すると GitHub Actions が同じスクリプトを実行し、ファイルを下書きのリリースに
 添付します。公開は手動です。
 
 ## 使い方

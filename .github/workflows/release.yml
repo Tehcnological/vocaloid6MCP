@@ -1,4 +1,4 @@
-# On a version tag (e.g. v0.2.0): build the single-file exe, check it answers over stdio, attach it to a DRAFT
+# On a version tag (e.g. v0.4.0): build the single-file exe, check it answers over stdio, attach it to a DRAFT
 # release. Nothing is public until the draft is published by hand on GitHub.
 name: release
 on:
