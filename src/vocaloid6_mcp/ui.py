@@ -265,8 +265,13 @@ def _file_dialog(w, path: str, timeout: float = 15) -> None:
     else:
         _press(d, "Cancel")
         raise VocaloidError("Could not type the file name into the dialog", "ダイアログにファイル名を入力できませんでした")
-    ok = next((b for b in d.descendants(control_type="Button")
-               if b.element_info.automation_id == SELECTORS["file_dialog_ok_id"]), None)
+    # Windows 11 shows Open as a SplitButton (it has a dropdown), Save as a plain Button
+    ok = next((b for b in d.descendants() if b.element_info.control_type in ("Button", "SplitButton")
+               and b.element_info.automation_id == SELECTORS["file_dialog_ok_id"]), None)
+    if ok is None:
+        _press(d, "Cancel")
+        raise VocaloidError("The file dialog's Open/Save button was not found (run self_check)",
+                            "ファイルダイアログの開く/保存ボタンが見つかりません（self_check を実行してください）")
     _invoke(ok)
     # "replace existing file?" confirmation
     confirm = _wait(lambda: next((x for x in dialogs(w) if x.element_info.class_name == SELECTORS["file_dialog_class"]
