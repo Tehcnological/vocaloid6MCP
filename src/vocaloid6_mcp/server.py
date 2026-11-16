@@ -3,6 +3,7 @@
 import functools
 import os
 
+import pydantic_core
 from .schema import FastMCP
 from pydantic import BaseModel, Field
 
@@ -58,7 +59,9 @@ def _tool():
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             try:
-                return fn(*args, **kwargs)
+                r = fn(*args, **kwargs)
+                # one JSON text block: FastMCP would send a list as one block per item (none when empty)
+                return pydantic_core.to_json(r, fallback=str, indent=2).decode() if isinstance(r, list) else r
             except VocaloidError:
                 raise
             except Exception as e:  # noqa: BLE001 - surface anything else in both languages
@@ -104,8 +107,8 @@ class NoteEdit(BaseModel):
         "(e.g. half the note) + depth + rate, no type; this is the audible long-note vibrato. "
         "/ 手動ビブラート。VOCALOID:AI トラックでは type なしで duration（例: 音符の半分）・depth・rate")
     ai_vibrato: bool | None = Field(None, description="AI auto-vibrato on/off (VOCALOID:AI tracks). / AI ビブラートの有効・無効")
-    ai_exp: dict[str, float] | None = Field(
-        None, description="VOCALOID:AI note settings 0..1 (0.5 = unchanged), e.g. {'amplitudeEnd': 0.3}. "
+    ai_exp: dict[str, float] | None = Field(  # keys listed as properties: Gemini rejects an object without any
+        None, json_schema_extra={"properties": {k: {"type": "number"} for k in vpr.AI_EXP_KEYS}}, description="VOCALOID:AI note settings 0..1 (0.5 = unchanged), e.g. {'amplitudeEnd': 0.3}. "
         "vibratoLeading/FollowingDepth only scale the AI's own auto-vibrato (little on short notes). Keys: "
         "vibratoLeadingDepth, vibratoFollowingDepth, amplitudeWhole/Start/End, pitchFine, pitchDriftStart/End, "
         "pitchScalingCenter/Origin, pitchTransitionStart/End. / AI 音符の設定 0〜1（0.5 = 変更なし）")

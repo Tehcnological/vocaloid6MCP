@@ -68,13 +68,17 @@ def spawn(args: list[str], cwd: str, env_prefix: str | None = None) -> None:
     user's full environment; this server's variables whose names start with env_prefix are added by a hidden cmd
     that then starts the editor (WMI's own environment option would replace the whole environment)."""
     cmd = subprocess.list2cmdline(args)
-    extra = {k: v for k, v in os.environ.items() if env_prefix and k.upper().startswith(env_prefix)}
-    if extra:
-        cmd = "cmd /c " + " && ".join(f'set "{k}={v}"' for k, v in extra.items()) + ' && start "" ' + cmd
+    # skip values cmd would expand or misquote (% and "); Windows paths cannot contain "
+    extra = {k: v for k, v in os.environ.items()
+             if env_prefix and k.upper().startswith(env_prefix) and not {'"', "%"} & set(v)}
+    wrap = bool(extra) and "%" not in cmd
+    if wrap:  # every argument in quotes, so cmd reads & | < > ^ in a path as text
+        cmd = ("cmd /c " + " && ".join(f'set "{k}={v}"' for k, v in extra.items())
+               + ' && start "" ' + " ".join(f'"{a}"' for a in args))
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _SPAWN_PS], capture_output=True,
                            env={**os.environ, "MCP_SPAWN_CMD": cmd, "MCP_SPAWN_DIR": cwd,
-                                "MCP_SPAWN_HIDE": "1" if extra else ""},
+                                "MCP_SPAWN_HIDE": "1" if wrap else ""},
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=60)
         if r.returncode == 0:
             return
@@ -105,12 +109,18 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     # with a project, wait for the editor window, not a Home window shown while it loads
     def ready():
         w = ui.main_window(required=False)
-        return w is not None and (not project_path or ui.is_editor(w))
+        return w is not None and (not project_path or ui.is_editor(w) or ui._message_box(w))
     while time.time() < deadline and not ui.run(ready):
         time.sleep(1)
     time.sleep(3)  # let the window finish building
     out = {"launched": True}
     if project_path:
+        def check_error():  # the project failed to load: VOCALOID6 shows an error box over its Home window
+            w = ui.main_window(required=False)
+            box = w and not ui.is_editor(w) and ui._message_box(w)
+            if box:
+                ui.load_error(box, project_path)
+        ui.run(check_error)
         stem = os.path.splitext(os.path.basename(project_path))[0]
         if ui.run(lambda: ui.project_name()) != stem:
             out.update(ui.run(ui.open_project, project_path))

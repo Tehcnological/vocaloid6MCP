@@ -216,7 +216,7 @@ def _ensure_idle(w) -> None:
             _wait(lambda: d not in dialogs(w), 5)
             continue
         if d.element_info.automation_id == "xAddTrackDlg":
-            # sometimes left open (cause not found); it changes nothing until Create is pressed
+            # left open e.g. after a failed open (VOCALOID6 then starts a new project); nothing changes until Create
             _press(d, "Cancel")
             _wait(lambda: d not in dialogs(w), 5)
             continue
@@ -316,6 +316,21 @@ def _resolve_unsaved_prompt(w, force: bool) -> bool:
 
 # ----------------------------------------------------------------------------- actions (run on the UI thread)
 
+def load_error(box, path: str, fallback: str = ""):
+    """Close VOCALOID6's error boxes (a broken file gives two in a row) and raise with their text."""
+    msgs = []
+    for _ in range(3):
+        if not box:
+            break
+        msgs.append(" ".join(t for t in _texts(box) if t not in ("OK", "Close")))
+        _press(box, "OK")
+        box = _wait(lambda: _message_box(main_window(required=False)), 2)
+    msg = " / ".join(msgs) or fallback
+    if msgs:  # VOCALOID6 may have replaced the open project with a new one
+        msg += f"; open now: {project_name(main_window())}"
+    raise VocaloidError(f"VOCALOID6 did not open {path} ({msg})", f"VOCALOID6 で {path} を開けませんでした（{msg}）")
+
+
 def open_project(path: str, force: bool = False) -> dict:
     w = main_window()
     path = os.path.abspath(path)
@@ -334,18 +349,18 @@ def open_project(path: str, force: bool = False) -> dict:
             _resolve_unsaved_prompt(w, force)
     _file_dialog(w, path)
     # opened from a separate Home window: continue in the editor window that replaces it
-    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w), 20)  # an error box ends the wait
+    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w), 60)  # an error box ends the wait
     w = main_window()
-    if _wait(lambda: _message_box(w), 1):
+    box = _wait(lambda: _message_box(w), 1)
+    if box and not any(b.window_text().replace("&", "") == "Cancel" for b in box.descendants(control_type="Button")):
+        load_error(box, path)  # an OK-only box is a load error, not the unsaved-changes prompt
+    if box:
         _resolve_unsaved_prompt(w, force)
     stem = os.path.splitext(os.path.basename(path))[0]
     events = handle_dialogs(w, 3)
-    if not _wait_title(w, stem, 20):
-        box = _message_box(w)
-        msg = " ".join(_texts(box)) if box else project_name(w)
-        if box:
-            _press(box, "OK")
-        raise VocaloidError(f"VOCALOID6 did not open {path} ({msg})", f"VOCALOID6 で {path} を開けませんでした（{msg}）")
+    _wait(lambda: project_name(w) == stem or _message_box(w), 20)  # an error box ends the wait
+    if project_name(w) != stem:
+        load_error(_message_box(w), path, project_name(w))
     events += handle_dialogs(w, 2)
     return {"opened": path, "dialogs": events}
 
