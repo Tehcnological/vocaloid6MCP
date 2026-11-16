@@ -12,9 +12,10 @@ from .errors import VocaloidError
 
 def find_exe() -> str | None:
     candidates = [os.environ.get("VOCALOID6_EXE")]
-    # MCP clients often start servers with a short env whitelist that has no ProgramFiles: fall back to the defaults
-    for base in (os.environ.get("ProgramFiles", r"C:\Program Files"),
-                 os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")):
+    # MCP clients often start servers with a short env whitelist that has no ProgramFiles (but has SystemDrive)
+    drive = os.environ.get("SystemDrive", "C:") + os.sep
+    for base in (os.environ.get("ProgramFiles") or os.path.join(drive, "Program Files"),
+                 os.environ.get("ProgramFiles(x86)") or os.path.join(drive, "Program Files (x86)")):
         if base:
             candidates.append(os.path.join(base, "VOCALOID6", "Editor", "VOCALOID6.exe"))
     return next((c for c in candidates if c and os.path.isfile(c)), None)
@@ -49,20 +50,40 @@ def status() -> dict:
     return info
 
 
-def spawn(args: list[str], cwd: str) -> None:
+_SPAWN_PS = """
+$a = @{CommandLine = $env:MCP_SPAWN_CMD; CurrentDirectory = $env:MCP_SPAWN_DIR}
+if ($env:MCP_SPAWN_HIDE) {
+  $a.ProcessStartupInformation = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ShowWindow = [uint16]0}
+}
+try { $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments $a -ErrorAction Stop } catch { exit 1 }
+if ($null -eq $r) { exit 1 }
+exit $r.ReturnValue
+"""
+
+
+def spawn(args: list[str], cwd: str, env_prefix: str | None = None) -> None:
     """Start the editor so it outlives this server. Some MCP clients (e.g. the official Python SDK on Windows) run
     the server in a job object that kills every child process when the client disconnects, which would close the
-    editor with unsaved work; Windows creates a process started through WMI outside that job."""
-    ps = ("$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create "
-          "-Arguments @{CommandLine=$env:MCP_SPAWN_CMD; CurrentDirectory=$env:MCP_SPAWN_DIR}; exit $r.ReturnValue")
+    editor with unsaved work; Windows creates a process started through WMI outside that job. That process gets the
+    user's full environment; this server's variables whose names start with env_prefix are added by a hidden cmd
+    that then starts the editor (WMI's own environment option would replace the whole environment)."""
+    cmd = subprocess.list2cmdline(args)
+    extra = {k: v for k, v in os.environ.items() if env_prefix and k.upper().startswith(env_prefix)}
+    if extra:
+        cmd = "cmd /c " + " && ".join(f'set "{k}={v}"' for k, v in extra.items()) + ' && start "" ' + cmd
     try:
-        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True,
-                           env={**os.environ, "MCP_SPAWN_CMD": subprocess.list2cmdline(args), "MCP_SPAWN_DIR": cwd},
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _SPAWN_PS], capture_output=True,
+                           env={**os.environ, "MCP_SPAWN_CMD": cmd, "MCP_SPAWN_DIR": cwd,
+                                "MCP_SPAWN_HIDE": "1" if extra else ""},
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=60)
         if r.returncode == 0:
             return
     except (OSError, subprocess.TimeoutExpired):
         pass
+    for _ in range(5):  # a slow WMI call may still have started it: never start a second copy
+        if processes():
+            return
+        time.sleep(1)
     subprocess.Popen(args, cwd=cwd, close_fds=True, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
 
 
@@ -81,7 +102,11 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
                             "VOCALOID6.exe が見つかりません。環境変数 VOCALOID6_EXE を設定してください")
     spawn([exe] + ([project_path] if project_path else []), os.path.dirname(exe))
     deadline = time.time() + wait_seconds
-    while time.time() < deadline and not ui.run(lambda: ui.main_window(required=False) is not None):
+    # with a project, wait for the editor window, not a Home window shown while it loads
+    def ready():
+        w = ui.main_window(required=False)
+        return w is not None and (not project_path or ui.is_editor(w))
+    while time.time() < deadline and not ui.run(ready):
         time.sleep(1)
     time.sleep(3)  # let the window finish building
     out = {"launched": True}

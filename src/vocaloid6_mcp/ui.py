@@ -64,14 +64,24 @@ def _desktop():
 
 def main_window(required: bool = True):
     """The editor window, else the separate Home window (on_home_screen() is then True)."""
-    wins = {w.element_info.automation_id: w for w in _desktop().windows()}
-    w = wins.get(SELECTORS["main_window"]["auto_id"]) or wins.get(SELECTORS["home_window"]["auto_id"])
-    if w is not None:
-        return w
+    home = None
+    for w in _desktop().windows():
+        aid = w.element_info.automation_id
+        if aid == SELECTORS["main_window"]["auto_id"]:
+            return w
+        if aid == SELECTORS["home_window"]["auto_id"]:
+            home = w
+    if home is not None:
+        return home
     if required:
         raise VocaloidError("VOCALOID6 is not running (call launch_vocaloid)",
                             "VOCALOID6 が起動していません（launch_vocaloid を呼んでください）")
     return None
+
+
+def is_editor(w) -> bool:
+    """True for the editor window, False for None or the separate Home window."""
+    return w is not None and w.element_info.automation_id == SELECTORS["main_window"]["auto_id"]
 
 
 def _wait(pred, timeout: float, step: float = 0.3):
@@ -324,7 +334,7 @@ def open_project(path: str, force: bool = False) -> dict:
             _resolve_unsaved_prompt(w, force)
     _file_dialog(w, path)
     # opened from a separate Home window: continue in the editor window that replaces it
-    _wait(lambda: (main_window(required=False) or w).element_info.automation_id == SELECTORS["main_window"]["auto_id"], 20)
+    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w), 20)  # an error box ends the wait
     w = main_window()
     if _wait(lambda: _message_box(w), 1):
         _resolve_unsaved_prompt(w, force)

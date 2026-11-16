@@ -372,7 +372,7 @@ async def main():
     live = "--live" in sys.argv
     unit_tests()
     tmp = tempfile.mkdtemp(prefix="vocaloid6_mcp_test_")
-    exe = os.environ.get("MCP_SERVER_EXE") or os.path.join(ROOT, ".venv", "Scripts", "vocaloid6-mcp.exe")
+    exe = os.path.abspath(os.environ.get("MCP_SERVER_EXE") or os.path.join(ROOT, ".venv", "Scripts", "vocaloid6-mcp.exe"))
     params = StdioServerParameters(command=exe if os.path.isfile(exe) else sys.executable,
                                    args=[] if os.path.isfile(exe) else ["-m", "vocaloid6_mcp.server"],
                                    env={**get_default_environment(), "PYTHONIOENCODING": "utf-8",  # what MCP clients pass by default

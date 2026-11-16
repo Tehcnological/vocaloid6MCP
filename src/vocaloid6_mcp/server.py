@@ -63,7 +63,7 @@ def _tool():
                 raise
             except Exception as e:  # noqa: BLE001 - surface anything else in both languages
                 raise VocaloidError(f"{type(e).__name__}: {e}", f"予期しないエラー {type(e).__name__}: {e}") from e
-        return mcp.tool()(wrapper)
+        return mcp.tool(structured_output=False)(wrapper)
     return deco
 
 
@@ -151,6 +151,10 @@ def vocaloid_status() -> dict:
     """Is VOCALOID6 running, which project is open, and what to do next. Call this first.
     / VOCALOID6 が起動しているか、開いているプロジェクト、次にすべきこと。最初に呼んでください。"""
     return app.status()
+_GUIDE_NOTE = ("\n\n---\nNote for agents without the skill: files this guide mentions next to it (voicebanks.md, "
+               "mix_stems.py, scripts/) live in the skill folder of the repository and are not part of this server. "
+               "Skip the steps that need them if they are not available.\n")
+
 
 def _guide_text() -> str:
     """skill/SKILL.md without its front matter (bundled next to this file in wheels and the single-file build)."""
@@ -159,7 +163,7 @@ def _guide_text() -> str:
         if os.path.isfile(p):
             with open(p, encoding="utf-8") as f:
                 text = f.read()
-            return text.split("---", 2)[2].lstrip() if text.startswith("---") else text
+            return (text.split("---", 2)[2].lstrip() if text.startswith("---") else text) + _GUIDE_NOTE
     raise VocaloidError("Usage guide not found", "使い方ガイドが見つかりません")
 
 

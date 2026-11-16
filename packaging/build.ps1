@@ -7,7 +7,11 @@ $venv = "$root\.build\venv"
 
 uv venv -q -p 3.11 --clear $venv
 if ($LASTEXITCODE) { throw "uv venv failed" }
-uv pip install -q -p $venv ".[kanji]" "pyinstaller==6.22.3"
+uv pip install -q -p $venv ".[kanji]"
+if ($LASTEXITCODE) { throw "uv pip install failed" }
+# What goes into the exe, before the build tools are added (local package lines would carry local paths)
+$packages = uv pip freeze -p $venv | Where-Object { $_ -notmatch ' @ file:' }
+uv pip install -q -p $venv "pyinstaller==6.22.3"
 if ($LASTEXITCODE) { throw "uv pip install failed" }
 
 & "$venv\Scripts\pyinstaller.exe" --onefile --noconfirm --clean --log-level WARN -n vocaloid6-mcp `
@@ -17,7 +21,7 @@ if ($LASTEXITCODE) { throw "uv pip install failed" }
 if ($LASTEXITCODE) { throw "PyInstaller failed" }
 
 # Record exactly what went into the exe, next to it.
-uv pip freeze -p $venv | Where-Object { $_ -notmatch ' @ file:' } | Out-File -Encoding utf8 "$root\dist\vocaloid6-mcp-packages.txt"
+$packages | Out-File -Encoding utf8 "$root\dist\vocaloid6-mcp-packages.txt"
 Get-FileHash "$root\dist\vocaloid6-mcp.exe" -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  vocaloid6-mcp.exe" } |
     Out-File -Encoding ascii "$root\dist\SHA256SUMS.txt"
 Write-Host "Built $root\dist\vocaloid6-mcp.exe"
