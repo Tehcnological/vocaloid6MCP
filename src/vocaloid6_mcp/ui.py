@@ -19,6 +19,7 @@ from .errors import VocaloidError
 
 SELECTORS = {
     "main_window": {"auto_id": "xMainWindow"},
+    "home_window": {"auto_id": "xHomeWindow"},  # VOCALOID6 may show its Home screen as its own window at startup
     "main_menu": {"auto_id": "xMainMenu"},
     "menu": {
         "File": ["New", "Open...", "Save", "Save As...", "Revert", "Import", "Export MIDI...", "Audio Mixdown..."],
@@ -62,9 +63,11 @@ def _desktop():
 
 
 def main_window(required: bool = True):
-    for w in _desktop().windows():
-        if w.element_info.automation_id == SELECTORS["main_window"]["auto_id"]:
-            return w
+    """The editor window, else the separate Home window (on_home_screen() is then True)."""
+    wins = {w.element_info.automation_id: w for w in _desktop().windows()}
+    w = wins.get(SELECTORS["main_window"]["auto_id"]) or wins.get(SELECTORS["home_window"]["auto_id"])
+    if w is not None:
+        return w
     if required:
         raise VocaloidError("VOCALOID6 is not running (call launch_vocaloid)",
                             "VOCALOID6 が起動していません（launch_vocaloid を呼んでください）")
@@ -320,6 +323,9 @@ def open_project(path: str, force: bool = False) -> dict:
         if _message_box(w):
             _resolve_unsaved_prompt(w, force)
     _file_dialog(w, path)
+    # opened from a separate Home window: continue in the editor window that replaces it
+    _wait(lambda: (main_window(required=False) or w).element_info.automation_id == SELECTORS["main_window"]["auto_id"], 20)
+    w = main_window()
     if _wait(lambda: _message_box(w), 1):
         _resolve_unsaved_prompt(w, force)
     stem = os.path.splitext(os.path.basename(path))[0]

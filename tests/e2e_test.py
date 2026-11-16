@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from mcp.client.stdio import get_default_environment, stdio_client
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 XSD_DIR = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "VOCALOID6", "Editor")
@@ -290,7 +290,9 @@ async def live_tests(c: Client, tmp: str, ctx: dict):
     notes = await c("list_notes", track=t, part=0)
     ok(all(n["phoneme"] for n in notes), "every note has a phoneme after loading", notes)
     ok(notes[1]["phoneme"] == "n a" and notes[1]["protected"], "protected phoneme kept", notes[1])
-    ok(notes[2]["vibrato"]["type"] == 1, "vibrato kept", notes[2])
+    vib = ({"type": 0, "duration": 400, "depth": 127, "rate": 60} if "ai" in ctx["tracks"]  # AI vibrato has no type
+           else {"type": 1, "duration": 400, "depth": 70, "rate": 60})
+    ok(notes[2]["vibrato"] == vib, "vibrato kept", notes[2])
     ok(notes[3]["lyric"] == "-", f"continuation note sings {notes[3]['phoneme']!r}", notes[3])
     cv = await c("get_curve", track=t, part=0, curve="dynamics")
     ok(cv["points"] == [[0, 100], [960, 40]], "curve kept", cv)
@@ -373,7 +375,8 @@ async def main():
     exe = os.environ.get("MCP_SERVER_EXE") or os.path.join(ROOT, ".venv", "Scripts", "vocaloid6-mcp.exe")
     params = StdioServerParameters(command=exe if os.path.isfile(exe) else sys.executable,
                                    args=[] if os.path.isfile(exe) else ["-m", "vocaloid6_mcp.server"],
-                                   env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+                                   env={**get_default_environment(), "PYTHONIOENCODING": "utf-8",  # what MCP clients pass by default
+                                        **{k: v for k, v in os.environ.items() if k.startswith("VOCALOID6")}})
     try:
         async with stdio_client(params) as (r, w), ClientSession(r, w) as s:
             await s.initialize()
