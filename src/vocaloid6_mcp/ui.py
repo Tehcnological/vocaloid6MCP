@@ -330,31 +330,36 @@ def is_question(box) -> bool:
     return any(b.element_info.automation_id in ("6", "7") for b in box.descendants(control_type="Button"))
 
 
-def finish_load(w, path: str) -> list[dict]:
-    """Close OK-only message boxes over w (a broken file gives two in a row), then return them as notes if the
-    project opened anyway (a box may be only a warning), else raise with their text."""
+def finish_load(w, path: str, force: bool = False, before: str | None = None) -> list[dict]:
+    """Close the message boxes over w (a broken file gives two OK boxes in a row; a Yes/No question is answered as
+    _resolve_unsaved_prompt does), then return them as notes if the project opened anyway (a box may be only a
+    warning), else raise with their text. before = the project open before: with the same name, the title cannot
+    show whether the new file loaded, so a box then means it did not."""
     msgs = []
     box = _message_box(w)
-    for _ in range(3):
-        if not box or is_question(box):
+    for _ in range(4):
+        if not box:
             break
-        msgs.append(" ".join(t for t in _texts(box) if t not in ("OK", "Close")))
-        _press_id(box, "1", "2") or _press(box, "OK", "Close")  # IDOK / an OK-only box's single button
+        if is_question(box):
+            _resolve_unsaved_prompt(w, force)  # raises unless force (and then closes it with Cancel)
+        else:
+            msgs.append(" ".join(t for t in _texts(box) if t not in ("OK", "Close")))
+            _press_id(box, "1", "2") or _press(box, "OK", "Close")  # IDOK / an OK-only box's single button
         # w, not main_window(): finding the window takes seconds while VOCALOID6 sets up the project it falls back to
         _wait(lambda: box not in dialogs(w), 3)
         box = _wait(lambda: _message_box(w), 2)
     w = main_window()  # once: opening from the Home window may have replaced it
     stem = os.path.splitext(os.path.basename(path))[0]
-    if _wait(lambda: project_name(w) == stem, 5 if msgs else 0.5):
+    if not (msgs and before == stem) and _wait(lambda: project_name(w) == stem, 5 if msgs else 0.5):
         return [{"dialog": "message", "text": m} for m in msgs]
-    msg = " / ".join(msgs) or project_name(w)
-    if msgs:  # VOCALOID6 may have replaced the open project with a new one
-        msg += f"; open now: {project_name(w)}"
+    now = project_name(w) or "the Home screen"
+    msg = f"{' / '.join(msgs)}; open now: {now}" if msgs else f"open now: {now}"
     raise VocaloidError(f"VOCALOID6 did not open {path} ({msg})", f"VOCALOID6 で {path} を開けませんでした（{msg}）")
 
 
 def open_project(path: str, force: bool = False) -> dict:
     w = main_window()
+    before = project_name(w)
     path = os.path.abspath(path)
     if not os.path.isfile(path):
         raise VocaloidError(f"File not found: {path}", f"ファイルが見つかりません: {path}")
@@ -373,13 +378,15 @@ def open_project(path: str, force: bool = False) -> dict:
     # opened from a separate Home window: continue in the editor window that replaces it
     _wait(lambda: is_editor(main_window(required=False)) or _message_box(w), 60)  # an error box ends the wait
     w = main_window()
-    box = _wait(lambda: _message_box(w), 1)
-    if box and is_question(box):
-        _resolve_unsaved_prompt(w, force)
     stem = os.path.splitext(os.path.basename(path))[0]
     events = handle_dialogs(w, 3)
-    _wait(lambda: project_name(w) == stem or _message_box(w), 60)  # big projects load slowly; a box ends the wait
-    events += finish_load(w, path)
+    for _ in range(3):  # big projects load slowly; a box ends the wait, and still no editor means it failed
+        _wait(lambda: project_name(w) == stem or _message_box(w) or not is_editor(w), 60)
+        box = _message_box(w)
+        if not (box and is_question(box)):
+            break
+        _resolve_unsaved_prompt(w, force)  # e.g. unsaved changes, asked after the file dialog
+    events += finish_load(w, path, force, before)
     events += handle_dialogs(w, 2)
     return {"opened": path, "dialogs": events}
 

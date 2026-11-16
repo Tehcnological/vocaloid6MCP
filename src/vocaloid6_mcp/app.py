@@ -8,24 +8,13 @@ import psutil
 
 from . import ui
 from .errors import VocaloidError
-
-
-def known_dir(env: str, reg_value: str) -> str | None:
-    """A Windows folder from its environment variable, else from the registry: MCP clients often start servers
-    with a short environment that has no ProgramFiles or CommonProgramFiles."""
-    if os.environ.get(env):
-        return os.environ[env]
-    try:
-        import winreg
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion") as k:
-            return winreg.QueryValueEx(k, reg_value)[0]
-    except (ImportError, OSError):
-        return None
+from .voicebanks import known_dir
 
 
 def find_exe() -> str | None:
     candidates = [os.environ.get("VOCALOID6_EXE")]
-    for base in (known_dir("ProgramFiles", "ProgramFilesDir"), known_dir("ProgramFiles(x86)", "ProgramFilesDir (x86)")):
+    for base in (known_dir("ProgramFiles", "ProgramFilesDir", "Program Files"),
+                 known_dir("ProgramFiles(x86)", "ProgramFilesDir (x86)", "Program Files (x86)")):
         if base:
             candidates.append(os.path.join(base, "VOCALOID6", "Editor", "VOCALOID6.exe"))
     return next((c for c in candidates if c and os.path.isfile(c)), None)
@@ -78,9 +67,11 @@ def spawn(args: list[str], cwd: str) -> list[str]:
                            env={**os.environ, "MCP_SPAWN_CMD": subprocess.list2cmdline(args), "MCP_SPAWN_DIR": cwd},
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=20)
         started = r.returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
+    except subprocess.TimeoutExpired:
+        started = None  # WMI may still be creating it: wait longer before trying another way
+    except OSError:
         started = False
-    for _ in range(10 if started else 5):  # a slow WMI call may still have started it: never start a second copy
+    for _ in range(10 if started else 30 if started is None else 5):  # a slow WMI call may still have started it: never start a second copy
         if processes():
             return []
         time.sleep(1)
