@@ -145,14 +145,25 @@ async def file_tests(c: Client, tmp: str) -> dict:
     await c("assign_lyrics", track=t, part=0, text="はなび", path=path)
     notes = await c("list_notes", track=t, part=0, path=path)
     ok([n["lyric"] for n in notes[:3]] == ["は", "な", "び"], "assign_lyrics", notes)
+    vib = ({"ai_vibrato": False, "ai_exp": {"vibratoFollowingDepth": 0.8}, "vibrato": {"duration": 400, "depth": 200, "rate": 60}}
+           if "ai" in tracks else {"vibrato": {"type": 1, "duration": 400, "depth": 70, "rate": 60}})
     await c("edit_notes", track=t, part=0, path=path, edits=[
         {"index": 0, "tone": "C#4", "duration": 240},
         {"index": 1, "phoneme": "n a"},
-        {"index": 2, "vibrato": {"type": 1, "duration": 400, "depth": 70, "rate": 60}}])
+        {"index": 2, **vib}])
     notes = await c("list_notes", track=t, part=0, path=path)
     ok(notes[0]["note"] == "C#4" and notes[0]["duration"] == 240, "edit_notes pitch and length")
     ok(notes[1]["phoneme"] == "n a" and notes[1]["protected"], "phoneme override is protected")
-    ok(notes[2]["vibrato"] == {"type": 1, "duration": 400}, "vibrato", notes[2])
+    if "ai" in tracks:
+        ok(notes[2]["ai_vibrato"] is False and notes[2]["ai_exp"] == {"vibratoFollowingDepth": 0.8}, "AI vibrato", notes[2])
+        ok(notes[2]["vibrato"] == {"type": 0, "duration": 400, "depth": 127, "rate": 60},
+           "AI manual vibrato (depth clamped to 127)", notes[2])
+        err = await c.error("edit_notes", track=t, part=0, path=path, edits=[{"index": 2, "vibrato": {"type": 1}}])
+        ok("type" in err, "vibrato type refused on an AI track", err)
+        err = await c.error("edit_notes", track=t, part=0, path=path, edits=[{"index": 2, "ai_exp": {"wobble": 0.5}}])
+        ok("vibratoLeadingDepth" in err, "unknown ai_exp key lists the valid ones", err)
+    else:
+        ok(notes[2]["vibrato"] == {"type": 1, "duration": 400, "depth": 70, "rate": 60}, "vibrato", notes[2])
     r = await c("add_notes", track=t, part=0, path=path, notes=[{"position": 2880, "duration": 480, "tone": "A4", "lyric": "た"}])
     ok(r["result"]["indexes"] == [4], "add_notes returns sorted index", r)
     await c("delete_notes", track=t, part=0, indexes=[4], path=path)
@@ -171,6 +182,15 @@ async def file_tests(c: Client, tmp: str) -> dict:
     ok("dynamics" in err, "unknown curve lists the valid ones", err)
     r = await c("clear_curve", track=t, part=0, curve="PIT", path=path)
     ok(r["result"]["removed"] == 2, "clear_curve", r)
+    if "ai" in tracks:
+        await c("set_curve", track=t, part=0, curve="expression", points=[[0, 80]], path=path)
+        cv = await c("get_curve", track=t, part=0, curve="EXP", path=path)
+        ok(cv["name"] == "s5Expression" and cv["range"] == [0, 100] and cv["points"] == [[0, 80]], "AI expression lane", cv)
+        await c("set_curve", track=t, part=0, curve="air", points=[[0, -50]], path=path)
+        cv = await c("get_curve", track=t, part=0, curve="air", path=path)
+        ok(cv["name"] == "s5Air" and cv["points"] == [[0, -50]], "air on an AI track writes the AI lane", cv)
+        err = await c.error("set_curve", track=t, part=0, curve="brightness", points=[[0, 1]], path=path)
+        ok("no effect" in err, "classic-only lane refused on an AI track", err)
     await c("set_tempo", bpm=96, position=7680, path=path)
     await c("set_time_signature", numer=3, denom=4, bar=4, path=path)
     proj = await c("get_project", path=path)
@@ -193,6 +213,8 @@ async def file_tests(c: Client, tmp: str) -> dict:
         if not (await c("get_project", path=path))["tracks"][tracks["classic"]]["parts"][0]["note_count"]:
             await c("add_melody", track=tracks["classic"], part=0, melody="G4:1 A4:1", lyrics="はる", path=path)
         await c("set_curve", track=tracks["classic"], part=0, curve="character", points=[[0, -10]], path=path)
+        err = await c.error("set_curve", track=tracks["classic"], part=0, curve="expression", points=[[0, 1]], path=path)
+        ok("no effect" in err, "AI-only lane refused on a VOCALOID track", err)
 
     print("[vsqx]")
     if "classic" in tracks or "english" in tracks:

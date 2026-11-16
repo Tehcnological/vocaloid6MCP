@@ -75,14 +75,14 @@ class NoteIn(BaseModel):
     duration: int = Field(description="Length in ticks (480 = quarter note). / 長さ（ティック、480 = 四分音符）")
     tone: Pitch = Field(description=_PITCH)
     lyric: str = Field("a", description="Lyric. / 歌詞")
-    phoneme: str | None = Field(None, description="Optional phoneme override, e.g. 'h @ l oU' (protected). / 発音記号の指定（任意、保護されます）")
-    velocity: int = Field(64, description="Velocity 0..127. / ベロシティ 0〜127")
+    phoneme: str | None = Field(None, description="Optional phoneme override, e.g. 'h @ l @U' (protected). / 発音記号の指定（任意、保護されます）")
+    velocity: int = Field(64, description="Velocity 0..127: consonant length, VOCALOID tracks only. / ベロシティ 0〜127（子音の長さ、VOCALOID トラックのみ）")
     language: str | None = Field(None, description="ja/en/ko/es/zh (AI voices only). / 言語（AI 音源のみ）")
 
 
 class Vibrato(BaseModel):
-    type: int | None = Field(None, description="Vibrato type (0 = none, 1..). / ビブラートの種類（0 = なし）")
-    duration: int | None = Field(None, description="Ticks at the end of the note. / 音符末尾からの長さ（ティック）")
+    type: int | None = Field(None, description="Vibrato type (0 = none, 1..), VOCALOID tracks only. / ビブラートの種類（0 = なし、VOCALOID トラックのみ）")
+    duration: int | None = Field(None, description="Ticks at the end of the note that get vibrato; 0 = none heard. / 音符末尾のビブラートの長さ（ティック、0 = 効かない）")
     depth: int | None = Field(None, description="Depth 0..127. / 深さ 0〜127")
     rate: int | None = Field(None, description="Rate 0..127. / 速さ 0〜127")
 
@@ -94,9 +94,18 @@ class NoteEdit(BaseModel):
     tone: Pitch | None = Field(None, description=_PITCH)
     lyric: str | None = Field(None, description="New lyric (pronunciation is recomputed). / 新しい歌詞（発音は再計算）")
     phoneme: str | None = Field(None, description="Phoneme override; '' gives it back to VOCALOID6. / 発音記号。'' で自動に戻す")
-    velocity: int | None = Field(None, description="Velocity 0..127. / ベロシティ")
+    velocity: int | None = Field(None, description="Velocity 0..127: consonant length, VOCALOID tracks only. / ベロシティ（子音の長さ、VOCALOID トラックのみ）")
     language: str | None = Field(None, description="ja/en/ko/es/zh (AI voices only). / 言語（AI 音源のみ）")
-    vibrato: Vibrato | None = Field(None, description="Vibrato fields to change. / 変更するビブラート項目")
+    vibrato: Vibrato | None = Field(
+        None, description="Manual vibrato. VOCALOID tracks: type + duration + depth + rate. VOCALOID:AI tracks: duration "
+        "(e.g. half the note) + depth + rate, no type; this is the audible long-note vibrato. "
+        "/ 手動ビブラート。VOCALOID:AI トラックでは type なしで duration（例: 音符の半分）・depth・rate")
+    ai_vibrato: bool | None = Field(None, description="AI auto-vibrato on/off (VOCALOID:AI tracks). / AI ビブラートの有効・無効")
+    ai_exp: dict[str, float] | None = Field(
+        None, description="VOCALOID:AI note settings 0..1 (0.5 = unchanged), e.g. {'amplitudeEnd': 0.3}. "
+        "vibratoLeading/FollowingDepth only scale the AI's own auto-vibrato (little on short notes). Keys: "
+        "vibratoLeadingDepth, vibratoFollowingDepth, amplitudeWhole/Start/End, pitchFine, pitchDriftStart/End, "
+        "pitchScalingCenter/Origin, pitchTransitionStart/End. / AI 音符の設定 0〜1（0.5 = 変更なし）")
 
 
 def _do(path: str | None, fn) -> dict:
@@ -292,6 +301,8 @@ def edit_track(track: int, name: str | None = None, mute: bool | None = None, so
                volume: int | None = None, pan: int | None = None, voice: str | None = None,
                language: str | None = None, path: str | None = None) -> dict:
     """Rename, mute, solo, set volume (dB x10) / pan (-64..64), or change the singer of every part.
+    Changing voice without language keeps each note's language and phonemes (VOCALOID6 does not convert them):
+    pass language to reset them.
     / トラック名・ミュート・ソロ・音量（dB×10）・パン（-64〜64）・全パートの歌手を変更します"""
     bank = voicebanks.find(voice) if voice else None
 
@@ -406,8 +417,10 @@ def add_melody(track: int, part: int, melody: str, lyrics: str | None = None, la
 @_tool()
 def set_curve(track: int, part: int, curve: str, points: list[list[int]], path: str | None = None) -> dict:
     """Write a part curve: points [[tick, value], ...] relative to the part replace the curve between the first and
-    last tick. Curves: dynamics, pitchBend, pitchBendSens, breathiness, brightness, clearness, portamento, growl,
-    xSynth, character, air, exciter (short names DYN, PIT, PBS, BRE, BRI, CLE, POR, GWL, XSY, GEN/CHA, AIR, EXC).
+    last tick. VOCALOID:AI tracks: dynamics, pitchBend, pitchBendSens, expression (0..100), air (-100..100),
+    character (-64..63). VOCALOID tracks: dynamics, pitchBend, pitchBendSens, breathiness, brightness, clearness,
+    portamento, growl, xSynth, character, air, exciter (short names DYN, PIT, PBS, EXP, BRE, BRI, CLE, POR, GWL,
+    XSY, GEN/CHA, AIR, EXC). A lane the track type ignores is refused.
     / パートのカーブを書きます。points は [[ティック, 値], ...]（パート相対）で、最初と最後のティックの間を置き換えます。"""
     return _do(path, lambda s: {"points": vpr.set_curve(s, track, part, curve, [tuple(p) for p in points])})
 

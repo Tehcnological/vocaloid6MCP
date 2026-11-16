@@ -123,8 +123,9 @@ banks the language is guessed from the bank name (`language_source: "name"`).
 - **Tracks / parts**: `add_track`, `edit_track`, `remove_track`, `add_part`, `edit_part`, `remove_part`, `fit_part`
 - **Notes / lyrics**: `list_notes`, `add_notes`, `edit_notes`, `delete_notes`, `assign_lyrics`, `add_melody`
   (e.g. `A4:1 A4:1 B4:2 r:1`)
-- **Curves**: `set_curve`, `get_curve`, `clear_curve` (dynamics, pitchBend, pitchBendSens, breathiness, brightness,
-  clearness, portamento, growl, xSynth, character, air, exciter)
+- **Curves**: `set_curve`, `get_curve`, `clear_curve` (AI tracks: dynamics, pitchBend, pitchBendSens,
+  expression, air, character; classic tracks: dynamics, pitchBend, pitchBendSens, breathiness, brightness, clearness,
+  portamento, growl, xSynth, character, air, exciter)
 - **Playback / export**: `play`, `stop`, `export_wav` (`tracks=[...]` renders stems: only those tracks, mute/solo
   restored afterwards), `export_midi`, `import_midi`, `export_vsqx`
 - **Utilities**: `note_to_midi`, `midi_to_note`, `beats_to_ticks`, `ticks_to_beats`, `split_lyrics`

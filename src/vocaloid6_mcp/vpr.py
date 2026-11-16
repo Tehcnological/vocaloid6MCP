@@ -27,18 +27,26 @@ PLACEHOLDER = "a"
 # tracks declare the version VOCALOID6 6.13 itself writes. Classic-only files stay 5.0.0 so VOCALOID5 can open them.
 V6_VERSION = {"major": 6, "minor": 5, "revision": 1}  # replaced by VOCALOID6's own pronunciation when it loads the file
 TYPE_NAMES = {0: "VOCALOID", 1: "audio", 2: "VOCALOID:AI"}
-# name -> (min, max, default). Ranges of the classic VOCALOID parameters; the AI-only ones (air, exciter) are
-# assumed to share the 0..127 range of the classic sliders.
+# name -> (min, max, default). Ranges from the VOCALOID6 6.13 reference manual (VOICE COLOR, p. 56) where it gives
+# them. VOCALOID:AI parts use their own lanes (s5*): the classic air/character/exciter lanes do nothing there.
 CURVES = {
     "dynamics": (0, 127, 64), "pitchBend": (-8192, 8191, 0), "pitchBendSens": (0, 24, 2),
     "breathiness": (0, 127, 0), "brightness": (0, 127, 64), "clearness": (0, 127, 0),
     "portamento": (0, 127, 64), "growl": (0, 127, 0), "xSynth": (0, 127, 0),
-    "character": (-64, 63, 0), "air": (0, 127, 0), "exciter": (0, 127, 0),
+    "character": (-64, 63, 0), "air": (0, 127, 0), "exciter": (-64, 63, 0),
+    "s5Expression": (0, 100, 50), "s5Air": (-100, 100, 0), "s5Character": (-64, 63, 0),
 }
 CURVE_ALIASES = {"dyn": "dynamics", "pit": "pitchBend", "pb": "pitchBend", "pbs": "pitchBendSens",
                  "bre": "breathiness", "bri": "brightness", "cle": "clearness", "por": "portamento",
                  "gwl": "growl", "xsy": "xSynth", "gen": "character", "cha": "character", "air": "air",
-                 "exc": "exciter"}
+                 "exc": "exciter", "exp": "s5Expression", "expression": "s5Expression"}
+AI_CURVES = {"dynamics", "pitchBend", "pitchBendSens", "s5Expression", "s5Air", "s5Character"}
+AI_LANE = {"air": "s5Air", "character": "s5Character"}  # same knob, AI-part lane
+# Per-note AI settings (VOCALOID6's Vibrato / Expression / Pitch tools on VOCALOID:AI parts), as VOCALOID6 saves them.
+# shortcut: range 0..1 with 0.5 = untouched is read from saved files (all 0.5), not documented; widen if VOCALOID6 writes more
+AI_EXP_KEYS = ("pitchFine", "pitchDriftStart", "pitchDriftEnd", "pitchScalingCenter", "pitchScalingOrigin",
+               "pitchTransitionStart", "pitchTransitionEnd", "amplitudeWhole", "amplitudeStart", "amplitudeEnd",
+               "vibratoLeadingDepth", "vibratoFollowingDepth")
 
 
 # ----------------------------------------------------------------------------- file io
@@ -209,8 +217,16 @@ def note_info(i: int, n: dict) -> dict:
         "language": LANG_NAMES.get(n.get("langID", 0), n.get("langID")), "protected": n.get("isProtected", False),
         "velocity": n.get("velocity", 64),
     }
-    if vib.get("type"):
-        out["vibrato"] = {"type": vib["type"], "duration": vib.get("duration", 0)}
+    if vib.get("type") or vib.get("duration") or vib.get("depths") or vib.get("rates"):
+        out["vibrato"] = {"type": vib.get("type", 0), "duration": vib.get("duration", 0)}
+        for key, name in (("depths", "depth"), ("rates", "rate")):
+            if vib.get(key):
+                out["vibrato"][name] = vib[key][0]["value"]
+    if "isAiVibratoEnabled" in n:
+        out["ai_vibrato"] = n["isAiVibratoEnabled"]
+    changed = {k: v for k, v in (n.get("aiExp") or {}).items() if v != 0.5}
+    if changed:
+        out["ai_exp"] = changed
     if n.get("phoneme") == PLACEHOLDER and n.get("lyric") not in ("a", "あ", "ア", "-"):
         out["phoneme"] = None  # not computed yet: VOCALOID6 fills it in when it loads the file
     return out
@@ -229,6 +245,9 @@ def summary(seq: dict) -> dict:
                 "comp_id": v.get("compID"), "languages": [LANG_NAMES.get(x, x) for x in _part_languages(p, ttype)],
                 "style": p.get("styleName"), "note_count": len(p.get("notes", [])),
                 "curves": sorted({c["name"] for c in p.get("controllers", []) if c.get("events")}),
+                # Part Inspector VOICE COLOR: offsets added to the curves (manual p. 56)
+                "voice_color": {x["name"]: x["value"] for fx in p.get("midiEffects", []) if fx.get("id") == "VoiceColor"
+                                for x in fx.get("parameters", [])},
             })
         tracks.append({"index": ti, "name": t.get("name", ""), "type": TYPE_NAMES.get(ttype, ttype),
                        "muted": t.get("isMuted", False), "solo": t.get("isSoloMode", False), "parts": parts})
@@ -465,7 +484,25 @@ def list_notes(seq: dict, track: int, part: int, start: int = 0, count: int | No
 def edit_notes(seq: dict, track: int, part: int, edits: list[dict]) -> None:
     p = _part(seq, track, part)
     targets = [(_note(p, e["index"]), e) for e in edits]  # resolve every index before changing order
+    ai = _track(seq, track).get("type") == 2
+    for _, e in targets:  # validate everything before changing anything
+        if ai and (e.get("vibrato") or {}).get("type"):  # VOCALOID6 resets it to 0 on AI notes
+            raise VocaloidError("vibrato type is for VOCALOID tracks; on a VOCALOID:AI track give only duration, "
+                                "depth and rate (duration > 0 = how much of the note end has vibrato)",
+                                "vibrato の type は VOCALOID トラック用です。VOCALOID:AI トラックでは duration・depth・rate "
+                                "だけを指定してください（duration > 0 = 音符末尾のビブラートの長さ）")
+        if not ai and (e.get("ai_vibrato") is not None or e.get("ai_exp")):
+            raise VocaloidError("ai_vibrato / ai_exp are for VOCALOID:AI tracks; use vibrato on a VOCALOID track",
+                                "ai_vibrato / ai_exp は VOCALOID:AI トラック用です。VOCALOID トラックでは vibrato を使ってください")
+        for k, v in (e.get("ai_exp") or {}).items():
+            if k not in AI_EXP_KEYS or not 0 <= v <= 1:
+                raise VocaloidError(f"ai_exp {k}={v}: keys are {list(AI_EXP_KEYS)}, values 0..1 (0.5 = unchanged)",
+                                    f"ai_exp {k}={v}: キーは {list(AI_EXP_KEYS)}、値は 0〜1（0.5 = 変更なし）")
     for n, e in targets:
+        if e.get("ai_vibrato") is not None:
+            n["isAiVibratoEnabled"] = bool(e["ai_vibrato"])
+        if e.get("ai_exp"):
+            n.setdefault("aiExp", dict.fromkeys(AI_EXP_KEYS, 0.5)).update({k: float(v) for k, v in e["ai_exp"].items()})
         if e.get("position") is not None:
             n["pos"] = max(0, int(e["position"]))
         if e.get("duration") is not None:
@@ -496,9 +533,9 @@ def edit_notes(seq: dict, track: int, part: int, edits: list[dict]) -> None:
             if v.get("duration") is not None:
                 vib["duration"] = max(0, min(int(v["duration"]), n["duration"]))
             if v.get("depth") is not None:
-                vib["depths"] = [{"pos": 0, "value": int(v["depth"])}]
+                vib["depths"] = [{"pos": 0, "value": max(0, min(127, int(v["depth"])))}]
             if v.get("rate") is not None:
-                vib["rates"] = [{"pos": 0, "value": int(v["rate"])}]
+                vib["rates"] = [{"pos": 0, "value": max(0, min(127, int(v["rate"])))}]
     _notes(p)
     _grow(seq, p)
 
@@ -547,6 +584,19 @@ def curve_name(name: str) -> str:
     return key
 
 
+def _curve_key(seq: dict, track: int, name: str) -> str:
+    """The lane this track type really uses for `name`; error if the track type ignores that lane."""
+    key = curve_name(name)
+    ai = _track(seq, track).get("type") == 2
+    if ai:
+        key = AI_LANE.get(key, key)
+    if (key in AI_CURVES) != ai and key not in ("dynamics", "pitchBend", "pitchBendSens"):
+        kind, valid = ("VOCALOID:AI", sorted(AI_CURVES)) if ai else ("VOCALOID", sorted(set(CURVES) - AI_CURVES))
+        raise VocaloidError(f"{key} has no effect on a {kind} track; use one of {valid}",
+                            f"{key} は {kind} トラックでは効きません: {valid} のいずれかを指定してください")
+    return key
+
+
 def _controller(p: dict, name: str, create: bool) -> dict | None:
     for c in p.setdefault("controllers", []):
         if c.get("name") == name:
@@ -560,7 +610,7 @@ def _controller(p: dict, name: str, create: bool) -> dict | None:
 
 def set_curve(seq: dict, track: int, part: int, name: str, points: list[tuple[int, int]]) -> int:
     """Replace the curve between the first and last point with these points (positions relative to the part)."""
-    name = curve_name(name)
+    name = _curve_key(seq, track, name)
     lo, hi, _ = CURVES[name]
     pts = sorted((int(x), int(y)) for x, y in points)
     if not pts:
@@ -575,7 +625,7 @@ def set_curve(seq: dict, track: int, part: int, name: str, points: list[tuple[in
 
 
 def get_curve(seq: dict, track: int, part: int, name: str) -> dict:
-    name = curve_name(name)
+    name = _curve_key(seq, track, name)
     c = _controller(_part(seq, track, part), name, False)
     lo, hi, default = CURVES[name]
     return {"name": name, "range": [lo, hi], "default": default,
@@ -583,7 +633,7 @@ def get_curve(seq: dict, track: int, part: int, name: str) -> dict:
 
 
 def clear_curve(seq: dict, track: int, part: int, name: str, start: int | None = None, end: int | None = None) -> int:
-    name = curve_name(name)
+    name = _curve_key(seq, track, name)
     c = _controller(_part(seq, track, part), name, False)
     if not c:
         return 0

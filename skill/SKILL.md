@@ -67,8 +67,8 @@ Work in this order and change one thing at a time; export and compare.
 | Breathy intro / outro | `set_curve breathiness` | 0 → 30 at phrase ends |
 | Brighter / darker | `brightness` (classic) or `character` | brightness 64 neutral; character -64..63, 0 neutral |
 | Scoops, falls | `pitchBend` with `pitchBendSens` | PBS 2 = ±2 semitones over ±8192; keep bends short (60-120 ticks) |
-| Long-note vibrato | `edit_notes vibrato` | type 1, duration = last 40-60 % of the note, depth ~64, rate ~50 |
-| AI air / exciter | `air`, `exciter` (AI tracks) | small amounts (10-30) |
+| Long-note vibrato | `edit_notes vibrato`. AI tracks: no type, just duration + depth + rate (duration 0 = nothing heard). `ai_exp` vibratoLeading/FollowingDepth only scale the AI's own auto-vibrato (inaudible on short notes) | classic: type 1, last 40-60 % of the note, depth ~64, rate ~50. AI: duration ~half the note, depth ~110, rate ~100 (user's ear, half notes at 138 BPM). Notes under ~0.5 s are too short for audible vibrato |
+| AI tracks | `expression` (0..100, part default 50), `air` (-100..100), `character` | AI tracks accept only dynamics, pitchBend, pitchBendSens and these three; breathiness, brightness, exciter etc. are classic only |
 
 Curves are per part; positions are relative to the part; `set_curve` replaces the span between its first and last
 point. Read back with `get_curve`.
