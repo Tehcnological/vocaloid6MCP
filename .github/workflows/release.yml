@@ -1,0 +1,25 @@
+# On a version tag (e.g. v0.2.0): build the single-file exe, check it answers over stdio, attach it to a DRAFT
+# release. Nothing is public until the draft is published by hand on GitHub.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Build dist\vocaloid6-mcp.exe
+        run: powershell -ExecutionPolicy Bypass -File packaging\build.ps1
+      - name: Check the exe starts and every tool schema passes
+        run: |
+          uv venv -p 3.11 .build\check
+          uv pip install -p .build\check "mcp>=1.9,<2"
+          .build\check\Scripts\python tests\schema_check.py dist\vocaloid6-mcp.exe
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME dist\vocaloid6-mcp.exe dist\SHA256SUMS.txt dist\vocaloid6-mcp-packages.txt --draft --generate-notes

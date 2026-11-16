@@ -3,7 +3,7 @@
 import functools
 import os
 
-from mcp.server.fastmcp import FastMCP
+from .schema import FastMCP
 from pydantic import BaseModel, Field
 
 from . import app, live, music, ui, voicebanks, vpr, vsqx
@@ -28,6 +28,7 @@ Control VOCALOID6 and write VOCALOID3/4/5/6 projects, in English or Japanese.
 6. export_vsqx writes .vsqx for the VOCALOID3/4 editors (classic tracks only). VOCALOID2 is not supported.
 7. Live tools bring VOCALOID6 to the front while they open its menus, so keys the user types then go to VOCALOID6.
    Before using live tools, ask the user not to type or click until you are done; prefer path= edits otherwise.
+8. Before a song task, call usage_guide once for the full workflow and quality rules (skip it if the vocaloid6 skill is loaded).
 
 VOCALOID6 を操作し、VOCALOID3/4/5/6 のプロジェクトを英語・日本語で作成します。
 1. まず vocaloid_status を呼んでください。ライブ操作は Windows の UI オートメーションで VOCALOID6 エディターを操作します。
@@ -44,6 +45,7 @@ VOCALOID6 を操作し、VOCALOID3/4/5/6 のプロジェクトを英語・日本
 6. export_vsqx は VOCALOID3/4 用の .vsqx を書き出します（VOCALOID トラックのみ）。VOCALOID2 には対応していません。
 7. ライブ操作はメニューを開く間 VOCALOID6 を前面に出すため、そのときのユーザーの入力は VOCALOID6 に届きます。
    ライブ操作の前に、終わるまでキーボードやマウスに触れないようユーザーに伝えてください。難しければ path= で編集してください。
+8. 曲作りの前に usage_guide を一度呼び、手順と品質ルールの全文を読んでください（vocaloid6 スキルを読み込み済みなら不要）。
 """
 
 mcp = FastMCP("vocaloid6", instructions=INSTRUCTIONS, log_level="WARNING")
@@ -148,6 +150,25 @@ def vocaloid_status() -> dict:
     """Is VOCALOID6 running, which project is open, and what to do next. Call this first.
     / VOCALOID6 が起動しているか、開いているプロジェクト、次にすべきこと。最初に呼んでください。"""
     return app.status()
+
+def _guide_text() -> str:
+    """skill/SKILL.md without its front matter (bundled next to this file in wheels and the single-file build)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for p in (os.path.join(here, "SKILL.md"), os.path.join(here, "..", "..", "skill", "SKILL.md")):
+        if os.path.isfile(p):
+            with open(p, encoding="utf-8") as f:
+                text = f.read()
+            return text.split("---", 2)[2].lstrip() if text.startswith("---") else text
+    raise VocaloidError("Usage guide not found", "使い方ガイドが見つかりません")
+
+
+@_tool()
+def usage_guide() -> str:
+    """Full workflow and quality rules for making good vocals with this server (same text as the Claude skill).
+    Read it once before a song task. / この MCP で良い歌声を作るための手順と品質ルールの全文（Claude 用スキルと同じ内容）。
+    曲作りの前に一度読んでください。"""
+    return _guide_text()
+
 
 
 @_tool()

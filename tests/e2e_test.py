@@ -69,6 +69,7 @@ def validate_vsqx(path: str, version: int):
 async def file_tests(c: Client, tmp: str) -> dict:
     print("[utilities]")
     ok(await c("note_to_midi", note="C4") == 60, "C4 = 60")
+    ok((await c("usage_guide")).startswith("# VOCALOID6 vocals"), "usage_guide returns the skill text without front matter")
     ok(await c("note_to_midi", note="Bb3") == 58 and await c("note_to_midi", note="A#3") == 58, "A#3 = Bb3 = 58")
     ok(await c("midi_to_note", midi=61) == "C#4", "61 = C#4")
     ok(await c("beats_to_ticks", beats=1.5) == 720, "1.5 beats = 720 ticks")
@@ -369,7 +370,7 @@ async def main():
     live = "--live" in sys.argv
     unit_tests()
     tmp = tempfile.mkdtemp(prefix="vocaloid6_mcp_test_")
-    exe = os.path.join(ROOT, ".venv", "Scripts", "vocaloid6-mcp.exe")
+    exe = os.environ.get("MCP_SERVER_EXE") or os.path.join(ROOT, ".venv", "Scripts", "vocaloid6-mcp.exe")
     params = StdioServerParameters(command=exe if os.path.isfile(exe) else sys.executable,
                                    args=[] if os.path.isfile(exe) else ["-m", "vocaloid6_mcp.server"],
                                    env={**os.environ, "PYTHONIOENCODING": "utf-8"})
