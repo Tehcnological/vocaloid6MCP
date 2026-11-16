@@ -119,9 +119,9 @@ Claude にこう頼めます。
 - **テンポ**：`set_tempo`、`remove_tempo`、`set_time_signature`
 - **音源**：`list_voicebanks`、`get_voicebank`、`list_styles`
 - **トラック・パート**：`add_track`、`edit_track`、`remove_track`、`add_part`、`edit_part`、`remove_part`、`fit_part`
-- **音符・歌詞**：`list_notes`、`add_notes`、`edit_notes`、`delete_notes`、`assign_lyrics`、`add_melody`（例 `A4:1 A4:1 B4:2 r:1`）
+- **音符・歌詞**：`list_notes`、`add_notes`、`edit_notes`（手動ビブラート、AI 音符の設定、タイミングツール `timing` = 各音素の開始と音の終わり、音符の先頭からのティック）、`delete_notes`、`assign_lyrics`、`add_melody`（例 `A4:1 A4:1 B4:2 r:1`）
 - **カーブ**：`set_curve`、`get_curve`、`clear_curve`
-- **再生・書き出し**：`play`、`stop`、`export_wav`（`tracks=[...]` でそのトラックだけのステムを書き出し、ミュート・ソロは後で元に戻ります）、
+- **再生・書き出し**：`play`、`stop`、`export_wav`（`tracks=[...]` でそのトラックだけのステムを書き出し、ミュート・ソロは後で元に戻ります。`bit_depth=24` でビット深度を指定）、
   `export_midi`、`import_midi`、`export_vsqx`
 - **ユーティリティ**：`note_to_midi`、`midi_to_note`、`beats_to_ticks`、`ticks_to_beats`、`split_lyrics`
 

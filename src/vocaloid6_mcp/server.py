@@ -106,6 +106,11 @@ class NoteEdit(BaseModel):
         "vibratoLeading/FollowingDepth only scale the AI's own auto-vibrato (little on short notes). Keys: "
         "vibratoLeadingDepth, vibratoFollowingDepth, amplitudeWhole/Start/End, pitchFine, pitchDriftStart/End, "
         "pitchScalingCenter/Origin, pitchTransitionStart/End. / AI 音符の設定 0〜1（0.5 = 変更なし）")
+    timing: list[int | None] | None = Field(
+        None, description="Timing tool (VOCALOID:AI): ticks from the note start for each phoneme's start, then the end "
+        "of the sound; null = automatic. 'r e' on a 960-tick note: [null, 119, 840] = vowel a 16th late, sound ends a "
+        "16th early. [] = all automatic. Cleared when lyric or phoneme changes. / タイミングツール: 各音素の開始と音の終わり"
+        "（音符の先頭からのティック、null = 自動）")
 
 
 def _do(path: str | None, fn) -> dict:
@@ -367,8 +372,8 @@ def add_notes(track: int, part: int, notes: list[NoteIn], language: str | None =
 
 @_tool()
 def edit_notes(track: int, part: int, edits: list[NoteEdit], path: str | None = None) -> dict:
-    """Change position, length, pitch, lyric, phoneme, velocity, language or vibrato of notes by index.
-    / 番号で指定した音符の位置・長さ・音高・歌詞・発音記号・ベロシティ・言語・ビブラートを変更します"""
+    """Change position, length, pitch, lyric, phoneme, velocity, language, vibrato or phoneme timing of notes by index.
+    / 番号で指定した音符の位置・長さ・音高・歌詞・発音記号・ベロシティ・言語・ビブラート・発音タイミングを変更します"""
     payload = [e.model_dump(exclude_none=True) for e in edits]
     return _do(path, lambda s: vpr.edit_notes(s, track, part, payload))
 
@@ -454,14 +459,17 @@ def stop() -> dict:
 
 @_tool()
 def export_wav(output: str, tracks: list[int] | None = None, bypass_effects: bool = False,
-               timeout_seconds: int = 600) -> dict:
+               bit_depth: int | None = None, timeout_seconds: int = 600) -> dict:
     """Render the main mix of the open project to a WAV file (Audio Mixdown). Can take a while. tracks=[...] renders
-    only those tracks (a stem): the others are muted for the export, then mute/solo are restored.
+    only those tracks (a stem): the others are muted for the export, then mute/solo are restored. bit_depth (16, 24,
+    32...) picks the dialog's bit depth, which VOCALOID6 remembers; omitted = keep what the dialog has.
     / 開いているプロジェクトのメインミックスを WAV に書き出します（時間がかかることがあります）。tracks=[...] で
-    そのトラックだけを書き出します（ステム）。他のトラックは書き出しの間だけミュートし、後で元に戻します。"""
+    そのトラックだけを書き出します（ステム）。他のトラックは書き出しの間だけミュートし、後で元に戻します。
+    bit_depth（16・24・32 など）でビット深度を選びます（VOCALOID6 が記憶します）。"""
     if tracks:
-        return ui.run(live.export_tracks, output, tracks, bypass_effects, timeout_seconds, timeout=timeout_seconds + 120)
-    return ui.run(ui.export_wav, output, bypass_effects, timeout_seconds, timeout=timeout_seconds + 60)
+        return ui.run(live.export_tracks, output, tracks, bypass_effects, timeout_seconds, bit_depth,
+                      timeout=timeout_seconds + 120)
+    return ui.run(ui.export_wav, output, bypass_effects, timeout_seconds, bit_depth, timeout=timeout_seconds + 60)
 
 
 @_tool()

@@ -31,7 +31,8 @@ SELECTORS = {
     "stop_button": {"auto_id": "xStopButton"},
     "voice_changed_dialog": {"auto_id": "xVoiceChangedDlg", "ok": "xOKButton"},
     "mixdown_dialog": {"auto_id": "xAudioMixdownDlg", "ok": "xOKButton", "main": "xRBMasterTrack",
-                       "open_folder": "xOpenExplorerCheckBox", "bypass": "xIsBypassCheckBox"},
+                       "open_folder": "xOpenExplorerCheckBox", "bypass": "xIsBypassCheckBox",
+                       "bit_depth": "xBitDepthComboBox"},
     "smf_import_dialog": {"auto_id": "xImportSMFSettingsDialog", "ok": "xOkButton", "track_type": "xTrackTypeComboBox",
                           "tempo": "xTempoTimeSigCheckBox"},
     "file_dialog_class": "#32770",
@@ -403,7 +404,21 @@ def _by_id(d, aid):
     return next((e for e in d.descendants() if e.element_info.automation_id == aid), None)
 
 
-def export_wav(path: str, bypass_effects: bool = False, timeout: float = 600) -> dict:
+def _pick_combo(combo, want: str) -> str:
+    """Select the combo box item whose text contains want; returns that text. Raises with the offered texts."""
+    combo.expand()
+    items = _wait(lambda: combo.descendants(control_type="ListItem"), 3) or []
+    texts = [" ".join(t.window_text() for t in i.descendants(control_type="Text")) or i.window_text() for i in items]
+    hit = next((i for i, t in zip(items, texts) if want in t.replace(" ", "")), None)
+    if hit is None:
+        combo.collapse()
+        raise VocaloidError(f"{want} not offered: {texts}", f"{want} は選べません: {texts}")
+    hit.select()
+    combo.collapse()
+    return texts[items.index(hit)]
+
+
+def export_wav(path: str, bypass_effects: bool = False, timeout: float = 600, bit_depth: int | None = None) -> dict:
     w = main_window()
     path = os.path.abspath(path)
     if not path.lower().endswith(".wav"):
@@ -423,6 +438,13 @@ def export_wav(path: str, bypass_effects: bool = False, timeout: float = 600) ->
         cb = _by_id(d, sel[key])
         if cb and bool(cb.get_toggle_state()) != want:
             cb.toggle()
+    depth = None
+    if bit_depth is not None:
+        combo = _by_id(d, sel["bit_depth"])
+        if combo is None:
+            raise VocaloidError("Bit depth box not found in Audio Mixdown (run self_check)",
+                                "オーディオミックスダウンにビット深度の欄が見つかりません（self_check を実行してください）")
+        depth = _pick_combo(combo, str(int(bit_depth)))
     _invoke(_by_id(d, sel["ok"]))
     t0 = time.time()
     _file_dialog(w, path)
@@ -430,7 +452,10 @@ def export_wav(path: str, bypass_effects: bool = False, timeout: float = 600) ->
     if not done:
         raise VocaloidError(f"WAV export did not finish within {timeout}s", f"WAV の書き出しが {timeout} 秒以内に終わりませんでした")
     time.sleep(1)
-    return {"wav": path, "bytes": os.path.getsize(path), "seconds": round(time.time() - t0, 1)}
+    out = {"wav": path, "bytes": os.path.getsize(path), "seconds": round(time.time() - t0, 1)}
+    if depth:
+        out["bit_depth"] = depth
+    return out
 
 
 def export_midi(path: str) -> dict:

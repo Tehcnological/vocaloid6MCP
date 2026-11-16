@@ -105,7 +105,8 @@ def edit(fn) -> dict:
     return {"result": result, "path": path, "mode": "live", "dialogs": r["dialogs"]}
 
 
-def export_tracks(output: str, tracks: list[int], bypass_effects: bool = False, timeout: float = 600) -> dict:
+def export_tracks(output: str, tracks: list[int], bypass_effects: bool = False, timeout: float = 600,
+                  bit_depth: int | None = None) -> dict:
     """Render only some tracks: mute the others, export, then put mute/solo back. Not an undo step."""
     path = current_path()
     _save_and_wait(path)
@@ -114,7 +115,7 @@ def export_tracks(output: str, tracks: list[int], bypass_effects: bool = False, 
     vpr.save(path, seq)
     ui.revert()
     try:
-        out = ui.export_wav(output, bypass_effects, timeout)
+        out = ui.export_wav(output, bypass_effects, timeout, bit_depth)
     finally:
         seq = vpr.load(path)
         vpr.restore_tracks(seq, saved)

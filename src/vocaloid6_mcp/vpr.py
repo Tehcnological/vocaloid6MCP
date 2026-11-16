@@ -7,6 +7,8 @@ Learned from files VOCALOID6 itself saved (no decompiling). Facts this code reli
 - A note needs a non-empty "phoneme" or VOCALOID6 drops it on load. Unprotected notes get their phonemes
   recomputed from the lyric when VOCALOID6 loads the file, so new notes carry a placeholder phoneme.
 - Part curves are "controllers": [{"name", "events": [{"pos", "value"}]}], pos relative to the part.
+- The Timing tool (VOCALOID:AI) is the note's "phonemePositions": [{"pos": ticks}] relative to the note start, one
+  per phoneme start, then the end of the sound; AUTO_POS = untouched; VOCALOID6 omits trailing untouched entries.
 Unknown fields are kept as they are, so files VOCALOID6 wrote survive a round trip.
 """
 
@@ -23,6 +25,7 @@ from .lyrics import LANG_NAMES, lang_id
 
 SEQ = "Project/sequence.json"
 PLACEHOLDER = "a"
+AUTO_POS = -2147483648  # a phonemePositions entry the Timing tool has not moved
 # VOCALOID6 resets every AI part's singer to its default AI voice when the file says version 5.x, so files with AI
 # tracks declare the version VOCALOID6 6.13 itself writes. Classic-only files stay 5.0.0 so VOCALOID5 can open them.
 V6_VERSION = {"major": 6, "minor": 5, "revision": 1}  # replaced by VOCALOID6's own pronunciation when it loads the file
@@ -227,6 +230,8 @@ def note_info(i: int, n: dict) -> dict:
     changed = {k: v for k, v in (n.get("aiExp") or {}).items() if v != 0.5}
     if changed:
         out["ai_exp"] = changed
+    if n.get("phonemePositions"):
+        out["timing"] = [None if x["pos"] == AUTO_POS else x["pos"] for x in n["phonemePositions"]]
     if n.get("phoneme") == PLACEHOLDER and n.get("lyric") not in ("a", "あ", "ア", "-"):
         out["phoneme"] = None  # not computed yet: VOCALOID6 fills it in when it loads the file
     return out
@@ -498,6 +503,13 @@ def edit_notes(seq: dict, track: int, part: int, edits: list[dict]) -> None:
             if k not in AI_EXP_KEYS or not 0 <= v <= 1:
                 raise VocaloidError(f"ai_exp {k}={v}: keys are {list(AI_EXP_KEYS)}, values 0..1 (0.5 = unchanged)",
                                     f"ai_exp {k}={v}: キーは {list(AI_EXP_KEYS)}、値は 0〜1（0.5 = 変更なし）")
+        if e.get("timing") is not None:
+            if not ai:
+                raise VocaloidError("timing is the Timing tool of VOCALOID:AI tracks",
+                                    "timing は VOCALOID:AI トラックのタイミングツールです")
+            if any(x is not None and not -960 <= int(x) <= 7680 for x in e["timing"]):
+                raise VocaloidError(f"timing {e['timing']}: ticks from the note start (-960..7680), null = automatic",
+                                    f"timing {e['timing']}: 音符の先頭からのティック（-960〜7680）、null = 自動")
     for n, e in targets:
         if e.get("ai_vibrato") is not None:
             n["isAiVibratoEnabled"] = bool(e["ai_vibrato"])
@@ -520,11 +532,21 @@ def edit_notes(seq: dict, track: int, part: int, edits: list[dict]) -> None:
         if e.get("lyric") is not None:
             n["lyric"] = e["lyric"]
             n["phoneme"], n["isProtected"] = PLACEHOLDER, False
+            n.pop("phonemePositions", None)  # one entry per phoneme: stale once the phonemes change
         if e.get("phoneme") is not None:
             if e["phoneme"]:
                 n["phoneme"], n["isProtected"] = e["phoneme"], True
-            else:  # empty string: let VOCALOID6 pronounce the lyric again
+            else:  # empty string: the placeholder makes VOCALOID6 pronounce the lyric again when it loads the file
                 n["phoneme"], n["isProtected"] = PLACEHOLDER, False
+            n.pop("phonemePositions", None)
+        if e.get("timing") is not None:
+            pos = [AUTO_POS if x is None else int(x) for x in e["timing"]]
+            while pos and pos[-1] == AUTO_POS:  # VOCALOID6 leaves trailing untouched entries out
+                pos.pop()
+            if pos:
+                n["phonemePositions"] = [{"pos": x} for x in pos]
+            else:
+                n.pop("phonemePositions", None)
         if e.get("vibrato") is not None:
             v = e["vibrato"]
             vib = n.setdefault("vibrato", {"type": 0, "duration": 0})

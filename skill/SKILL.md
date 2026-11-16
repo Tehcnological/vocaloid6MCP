@@ -58,7 +58,16 @@ Never pass `force=true` unless the user agreed to lose unsaved work.
 - Very short notes (< 120 ticks) on consonant-heavy syllables blur: merge or lengthen with the user's OK.
 - Imported UST/MIDI: a short rest inside a word may be a dropped melisma (the vowel moving to a new pitch), not a
   pause. Compare with the original recording. Fix it with a `-` note at the new pitch filling the gap; closing the
-  gap by lengthening the note sounds wrong.
+  gap by lengthening the note sounds wrong. A melisma can also dip below the note: check, do not assume "up".
+- UST → MIDI keeps only notes and lyrics: the UST's own tuning (VBR vibrato, PBS/PBW portamento) is lost. Its VBR
+  (length %, cycle ms, depth cents, fade-in/out %) ports well as a pitchBend sine on the AI track; its portamento
+  does not (it doubles the AI's own transitions).
+- Long held notes at phrase ends: singers usually release them after 55-70 % and breathe. A synth that holds every
+  long note to full length sounds strained; shorten those notes (compare with the original if there is one).
+- Timing tool (AI tracks): `edit_notes timing` = ticks from the note start for each phoneme's start, then the sound
+  end (null = automatic), e.g. `[null, 40]` = vowel 40 ticks late, `[-40]` = consonant 40 ticks early. Use it by
+  hand on single notes; copied wholesale from a recording it makes fast lines choppy (silence before an unvoiced
+  consonant such as s/t/k is that consonant, not a break).
 
 ## 4. Expression / 表情
 
@@ -76,10 +85,20 @@ Work in this order and change one thing at a time; export and compare.
 Curves are per part; positions are relative to the part; `set_curve` replaces the span between its first and last
 point. Read back with `get_curve`.
 
+AI tracks already move pitch and loudness on their own (they scoop into notes from below and droop at the end).
+Copying a human singer's pitch or loudness curve note by note on top of that sounds worse, not more human: prefer
+song-wide changes (note releases, Expression contrast between verse and chorus, vibrato on held parts, EQ, mix
+balance) and hand-tune only the few notes the user points at. Render a stem and measure before and after when a
+change is meant to fix something.
+
 ## 5. Export & report / 書き出しと報告
 
 - `export_wav(output)` renders the main mix (seconds to minutes). `export_wav(output, tracks=[0, 1])` renders only
-  those tracks (a stem; the others are muted for the export and mute/solo are restored). `export_midi` for a DAW.
+  those tracks (a stem; the others are muted for the export and mute/solo are restored). `bit_depth=24` for a
+  file going to a DAW (VOCALOID6 remembers the choice). `export_midi` for a DAW.
+- Mix check over a finished backing track: a synth lead easily sits several dB above where the original singer sat;
+  compare vocal-vs-backing level per section with the original (separate it with a source-separation tool such as
+  Demucs) and turn the vocal tracks down before reaching for more tuning. Check the true peak stays below 0 dBFS.
   `export_vsqx(version=4)` for the VOCALOID4 editor (classic tracks only; AI tracks are skipped).
 - Live tools close a leftover Open/Save dialog (and its "File not found" box) by themselves; other dialogs stop them.
 - Report: source of the melody, singer and language, lyric table, what expression you added, the files written,
