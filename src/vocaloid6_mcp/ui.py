@@ -47,13 +47,19 @@ _com = threading.local()
 
 
 def run(fn, *args, timeout: float = 600, **kwargs):
-    """Run fn on the UI thread (COM initialised once there)."""
+    """Run fn on the UI thread (COM initialised once there). A COM error means a VOCALOID6 window vanished while it
+    was read: reported as an exit when VOCALOID6 is gone, else as a normal error."""
     def call():
+        import comtypes
         if not getattr(_com, "ready", False):
-            import comtypes
             comtypes.CoInitializeEx(comtypes.COINIT_MULTITHREADED)
             _com.ready = True
-        return fn(*args, **kwargs)
+        try:
+            return fn(*args, **kwargs)
+        except comtypes.COMError as e:
+            if not processes():
+                raise exited_error() from None
+            raise VocaloidError(f"VOCALOID6 did not answer: {e}", f"VOCALOID6 が応答しませんでした: {e}") from e
     return _pool.submit(call).result(timeout=timeout)
 
 
@@ -460,18 +466,30 @@ def exited_error() -> VocaloidError:
     return VocaloidError("VOCALOID6 exited while starting or loading", "VOCALOID6 が起動中か読み込み中に終了しました")
 
 
+def still_loading_error() -> VocaloidError:
+    return VocaloidError("VOCALOID6 is still starting or loading; call vocaloid_status in a moment",
+                         "VOCALOID6 はまだ起動中か読み込み中です。少ししてから vocaloid_status を呼んでください")
+
+
 def settle(w):
     """Wait for a load to end: VOCALOID6 idle, then, when it loaded from the separate Home window, the editor that
     replaces it (may take a while once the Home window is gone; 10 s with it still up means nothing is loading).
     Returns the main window."""
     if not _idle(w):  # the load runs on VOCALOID6's UI thread
         raise busy_error()
+    procs = processes()  # checked by PID while waiting: listing every process each poll is slow
+
+    def gone():
+        return not any(p.is_running() for p in procs)
     start = time.time()
-    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w) or not processes()
+    _wait(lambda: gone() or is_editor(main_window(required=False)) or _message_box(w)
           or (_alive(w) and time.time() - start > 10), 120)
-    if not processes():
+    if gone():
         raise exited_error()
-    return main_window()
+    w = main_window(required=False)
+    if w is None:  # running, but the editor has not replaced the Home window yet
+        raise still_loading_error()
+    return w
 
 
 def finish_load(w, path: str, force: bool = False, before: str | None = None) -> tuple[list[dict], object]:
