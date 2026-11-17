@@ -110,8 +110,10 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
             w = ui.main_window(required=False)
             if w is None:
                 return []
-            ui._idle(w)  # the load from the command line may still be running: never open it a second time on top
-            return ui.finish_load(w, project_path) if ui._message_box(w) else []
+            if not ui._idle(w):  # the load from the command line is still running: never open it a second time
+                raise ui.busy_error()
+            w = ui.main_window(required=False)  # the Home window may have been replaced by the editor meanwhile
+            return ui.finish_load(w, project_path) if w and ui._message_box(w) else []
         notes = ui.run(check_boxes)
         if notes:
             out["dialogs"] = notes
