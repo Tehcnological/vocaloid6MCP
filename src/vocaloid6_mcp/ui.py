@@ -57,8 +57,9 @@ def run(fn, *args, timeout: float = 600, **kwargs):
         try:
             return fn(*args, **kwargs)
         except comtypes.COMError as e:
-            if not processes():
-                raise exited_error() from None
+            if not processes():  # any tool: not only a start or a load
+                raise VocaloidError("VOCALOID6 exited; call launch_vocaloid to start it again",
+                                    "VOCALOID6 が終了しました。launch_vocaloid で起動し直してください") from None
             raise VocaloidError(f"VOCALOID6 did not answer: {e}", f"VOCALOID6 が応答しませんでした: {e}") from e
     return _pool.submit(call).result(timeout=timeout)
 
