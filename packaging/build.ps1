@@ -20,6 +20,11 @@ if ($LASTEXITCODE) { throw "uv pip install failed" }
     "$root\packaging\entry.py"
 if ($LASTEXITCODE) { throw "PyInstaller failed" }
 
+# The exe contains pykakasi (GPL-3.0-or-later), so it ships with that license text and a note that says so.
+$gpl = Get-ChildItem "$venv\Lib\site-packages\pykakasi-*.dist-info" -Recurse -Filter COPYING | Select-Object -First 1
+if (-not $gpl) { throw "pykakasi's COPYING file was not found in the build venv" }
+Copy-Item $gpl.FullName "$root\dist\GPL-3.0.txt" -Force
+Copy-Item "$root\packaging\EXE-LICENSE.md" "$root\dist\" -Force
 # Record exactly what went into the exe, next to it.
 $packages | Out-File -Encoding utf8 "$root\dist\vocaloid6-mcp-packages.txt"
 Get-FileHash "$root\dist\vocaloid6-mcp.exe" -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  vocaloid6-mcp.exe" } |

@@ -286,3 +286,5 @@ With `lxml` installed the VSQX output is validated against Yamaha's `vsq3.xsd` /
 ## License
 
 MIT, see [LICENSE](LICENSE). Not affiliated with Yamaha. VOCALOID is a trademark of Yamaha Corporation.
+
+The single-file `.exe` on the Releases page also contains pykakasi, which is GPL-3.0-or-later, so the `.exe` as a whole is distributed under GPL-3.0-or-later. Each release carries `EXE-LICENSE.md` and `GPL-3.0.txt`. The source in this repository stays MIT.

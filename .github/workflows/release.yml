@@ -29,4 +29,4 @@ jobs:
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME dist\vocaloid6-mcp.exe dist\SHA256SUMS.txt dist\vocaloid6-mcp-packages.txt --draft --generate-notes
+        run: gh release create $env:GITHUB_REF_NAME dist\vocaloid6-mcp.exe dist\SHA256SUMS.txt dist\vocaloid6-mcp-packages.txt dist\GPL-3.0.txt dist\EXE-LICENSE.md --draft --generate-notes
