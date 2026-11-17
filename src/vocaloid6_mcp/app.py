@@ -113,7 +113,7 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     while time.time() < deadline and processes() and not ui.run(ready):
         time.sleep(1)
     if not processes():
-        raise _with_warnings(ui.exited_error(project_path), warnings)
+        raise _with_warnings(ui.exited_error(), warnings)
     time.sleep(3)  # let the window finish building
     out = {"launched": True}
     if warnings:
@@ -124,10 +124,10 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
         def finish():  # ui.run turns a vanished window (COM error) into an exit or a normal error
             w = ui.main_window(required=False)
             if w is None and not processes():
-                raise ui.exited_error(project_path)
+                raise ui.exited_error()
             if w is None:  # the process runs but shows no window yet: still starting, so never open twice
                 raise ui.still_loading_error()
-            w = ui.settle(w, project_path)  # the command-line load is done (or never started) after this
+            w = ui.settle(w)  # the command-line load is done (or never started) after this
             notes, w = ui.finish_load(w, project_path) if ui._message_box(w) else ([], w)
             # not open now means it was not taken from the command line, so opening it cannot load it twice
             return notes, (ui.open_project(project_path) if ui.project_name(w) != stem else {})

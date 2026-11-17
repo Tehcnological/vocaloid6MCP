@@ -146,8 +146,7 @@ def main_window(required: bool = True):
     if home is not None:
         return home
     if required:
-        raise VocaloidError("VOCALOID6 is not running (call launch_vocaloid)",
-                            "VOCALOID6 が起動していません（launch_vocaloid を呼んでください）")
+        raise exited_error()
     return None
 
 
@@ -462,16 +461,16 @@ def _stuck_error(text: str) -> VocaloidError:
                          f"このサーバーで閉じられないボックスがあります: {text}。VOCALOID6 で閉じてください")
 
 
-def exited_error(path: str | None = None) -> VocaloidError:
-    """VOCALOID6 is gone. With the project it was starting with or loading, that file is the likely cause, so the
-    message says so instead of suggesting a relaunch that would crash the same way."""
-    if path:
-        return VocaloidError(f"VOCALOID6 exited while starting with or loading {path}; the file may be the cause, so "
-                             "check it before launching again",
-                             f"{path} を開く途中で VOCALOID6 が終了しました。ファイルが原因の可能性があるため、"
-                             "起動し直す前に確認してください")
-    return VocaloidError("VOCALOID6 exited; call launch_vocaloid to start it again",
-                         "VOCALOID6 が終了しました。launch_vocaloid で起動し直してください")
+def exited_error() -> VocaloidError:
+    """VOCALOID6 is not running, or exited during a call. One message for every path: it covers a crash caused by
+    the project being opened (so a relaunch with the same file is not the only advice) without needing that path."""
+    return VocaloidError(
+        "VOCALOID6 is not running (it may have exited). If it was opening a project, that file may be the cause: "
+        "check it with get_project(path=...), which works with VOCALOID6 closed. Start VOCALOID6 with "
+        "launch_vocaloid (without project_path to rule the file out)",
+        "VOCALOID6 が起動していません（終了した可能性があります）。プロジェクトを開く途中だった場合はそのファイルが"
+        "原因かもしれません。VOCALOID6 を閉じたままでも使える get_project(path=...) で確認してください。"
+        "起動は launch_vocaloid で（ファイルを除外するには project_path なしで）")
 
 
 def still_loading_error() -> VocaloidError:
@@ -479,7 +478,7 @@ def still_loading_error() -> VocaloidError:
                          "VOCALOID6 はまだ起動中か読み込み中です。少ししてから vocaloid_status を呼んでください")
 
 
-def settle(w, path: str | None = None):
+def settle(w):
     """Wait for a load to end: VOCALOID6 idle, then, when it loaded from the separate Home window, the editor that
     replaces it (may take a while once the Home window is gone; 10 s with it still up means nothing is loading).
     Returns the main window."""
@@ -493,7 +492,7 @@ def settle(w, path: str | None = None):
     _wait(lambda: gone() or is_editor(main_window(required=False)) or _message_box(w)
           or (_alive(w) and time.time() - start > 10), 120)
     if gone():
-        raise exited_error(path)
+        raise exited_error()
     w = main_window(required=False)
     if w is None:  # running, but the editor has not replaced the Home window yet
         raise still_loading_error()
@@ -569,7 +568,7 @@ def open_project(path: str, force: bool = False) -> dict:
                                 f"VOCALOID6 の表示: {_message(box)}。VOCALOID6 で閉じてから、もう一度試してください")
     _file_dialog(w, path)
     _wait(lambda: not any(_is_file_dialog(d) for d in dialogs(w)), 30)
-    w = settle(w, path)
+    w = settle(w)
     events = handle_dialogs(w, 3)
     notes, w = finish_load(w, path, force, before)
     events += notes + handle_dialogs(w, 2)
