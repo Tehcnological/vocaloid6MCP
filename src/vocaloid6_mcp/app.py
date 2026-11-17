@@ -80,6 +80,17 @@ def spawn(args: list[str], cwd: str) -> list[str]:
             "エディターも閉じることがあります。こまめに保存してください。"]
 
 
+def _exited_error() -> VocaloidError:
+    return VocaloidError("VOCALOID6 exited while starting", "VOCALOID6 が起動中に終了しました")
+
+
+def _with_warnings(e: VocaloidError, warnings: list[str]) -> VocaloidError:
+    """Append the start warnings (each English, then Japanese) after the whole bilingual error."""
+    if warnings:
+        e.args = (" | ".join([str(e)] + warnings),)
+    return e
+
+
 def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     if project_path:
         project_path = os.path.abspath(project_path)
@@ -96,8 +107,9 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     warnings = spawn([exe] + ([project_path] if project_path else []), os.path.dirname(exe))
     deadline = time.time() + wait_seconds
     # with a project, wait for the editor window, not a Home window shown while it loads
+    from comtypes import COMError
+
     def ready():
-        from comtypes import COMError
         try:
             w = ui.main_window(required=False)
             return w is not None and bool(not project_path or ui.is_editor(w) or ui._message_box(w))
@@ -106,8 +118,7 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     while time.time() < deadline and processes() and not ui.run(ready):
         time.sleep(1)
     if not processes():
-        raise VocaloidError("VOCALOID6 exited while starting" + (f" | {' '.join(warnings)}" if warnings else ""),
-                            "VOCALOID6 が起動中に終了しました")
+        raise _with_warnings(_exited_error(), warnings)
     time.sleep(3)  # let the window finish building
     out = {"launched": True}
     if warnings:
@@ -117,6 +128,8 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
 
         def finish():
             w = ui.main_window(required=False)
+            if w is None and not processes():
+                raise _exited_error()
             if w is None:  # the process runs but shows no window yet: still starting, so never open a second time
                 raise VocaloidError("VOCALOID6 is still starting; call vocaloid_status in a moment",
                                     "VOCALOID6 はまだ起動中です。少ししてから vocaloid_status を呼んでください")
@@ -128,9 +141,7 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
             notes, opened = ui.run(finish)
             out.update(opened)
         except VocaloidError as e:
-            if warnings:  # the start warnings matter even when the open fails
-                e.args = (f"{e} | {' '.join(warnings)}",)
-            raise
+            raise _with_warnings(e, warnings)  # the start warnings matter even when the open fails
         if notes:
             out["dialogs"] = notes
     return {**out, **status()}
