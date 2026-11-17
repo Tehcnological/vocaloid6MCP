@@ -19,8 +19,7 @@ def find_exe() -> str | None:
     return next((c for c in candidates if c and os.path.isfile(c)), None)
 
 
-def processes() -> list[psutil.Process]:
-    return [p for p in psutil.process_iter(["name"]) if (p.info.get("name") or "").lower() == "vocaloid6.exe"]
+processes = ui.processes  # one rule for finding VOCALOID6, shared with the window lookup
 
 
 def _window_info() -> dict:
@@ -109,7 +108,10 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     if project_path:
         def check_boxes():  # a box: raise if the project did not open (or VOCALOID6 asks something), else report it
             w = ui.main_window(required=False)
-            return ui.finish_load(w, project_path) if w and ui._message_box(w) else []
+            if w is None:
+                return []
+            ui._idle(w)  # the load from the command line may still be running: never open it a second time on top
+            return ui.finish_load(w, project_path) if ui._message_box(w) else []
         notes = ui.run(check_boxes)
         if notes:
             out["dialogs"] = notes

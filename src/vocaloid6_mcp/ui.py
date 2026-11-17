@@ -57,28 +57,69 @@ def run(fn, *args, timeout: float = 600, **kwargs):
     return _pool.submit(call).result(timeout=timeout)
 
 
+_user32 = None
+_ENUM_PROC = None
+_pids: set[int] = set()
+
+
+def _win32():
+    """user32 with this module's own prototypes: pywinauto sets its own on the shared ctypes.windll.user32."""
+    global _user32, _ENUM_PROC
+    if _user32 is None:
+        import ctypes
+        from ctypes import wintypes
+        u = ctypes.WinDLL("user32", use_last_error=True)
+        _ENUM_PROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        u.EnumWindows.argtypes = [_ENUM_PROC, wintypes.LPARAM]
+        u.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        u.GetWindowThreadProcessId.restype = wintypes.DWORD
+        u.IsWindowVisible.argtypes = u.IsWindow.argtypes = [wintypes.HWND]
+        u.SendMessageTimeoutW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM,
+                                          wintypes.UINT, wintypes.UINT, ctypes.POINTER(ctypes.c_size_t)]
+        u.SendMessageTimeoutW.restype = ctypes.c_ssize_t
+        _user32 = u
+    return _user32
+
+
+def processes() -> list:
+    """Running VOCALOID6 processes. The ones found last time are checked first: main_window runs in wait loops, and
+    listing every process each time costs tens of ms."""
+    import psutil
+    global _pids
+    alive = []
+    for pid in _pids:
+        try:
+            p = psutil.Process(pid)
+            if p.name().lower() == "vocaloid6.exe":
+                alive.append(p)
+        except psutil.Error:
+            pass
+    if not alive:
+        alive = [p for p in psutil.process_iter(["name"]) if (p.info.get("name") or "").lower() == "vocaloid6.exe"]
+    _pids = {p.pid for p in alive}
+    return alive
+
+
 def _vocaloid_windows() -> list:
     """VOCALOID6's visible top-level windows. Only its own windows are asked: listing the whole desktop through UI
     Automation waits about 5 s on every window that does not answer, such as a suspended Settings app."""
     import ctypes
     from ctypes import wintypes
 
-    import psutil
     from pywinauto.controls.uiawrapper import UIAWrapper
     from pywinauto.uia_element_info import UIAElementInfo
-    pids = {p.pid for p in psutil.process_iter(["name"]) if (p.info.get("name") or "").lower() == "vocaloid6.exe"}
-    user32, found = ctypes.windll.user32, []
+    pids = {p.pid for p in processes()}
+    u, found = _win32(), []
 
-    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     def collect(hwnd, _):
         pid = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        if pid.value in pids and user32.IsWindowVisible(hwnd):
+        u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value in pids and u.IsWindowVisible(hwnd):
             found.append(hwnd)
         return True
 
     if pids:
-        user32.EnumWindows(collect, 0)
+        u.EnumWindows(_ENUM_PROC(collect), 0)
     return [UIAWrapper(UIAElementInfo(h)) for h in found]
 
 
@@ -355,18 +396,16 @@ def _idle(w, timeout: float = 120) -> bool:
     so this returns when the load is done or a message box is up (a modal box keeps messages flowing). Checked live
     on small, large, same-name and broken projects."""
     import ctypes
-    from ctypes import wintypes
-    user32 = ctypes.windll.user32
-    send = user32.SendMessageTimeoutW
-    send.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM, wintypes.UINT, wintypes.UINT,
-                     ctypes.POINTER(ctypes.c_size_t)]
+    u = _win32()
     try:
         hwnd = w.handle
-        if not user32.IsWindow(hwnd):  # the window is gone: nothing left to wait for
-            return True
-        return bool(send(hwnd, 0, 0, 0, 0, int(timeout * 1000), ctypes.byref(ctypes.c_size_t())))
-    except Exception:  # noqa: BLE001 - a stale element
+    except Exception:  # noqa: BLE001 - a stale element: nothing left to wait for
         return True
+    if not hwnd or not u.IsWindow(hwnd):  # the window is gone: nothing left to wait for
+        return True
+    if u.SendMessageTimeoutW(hwnd, 0, 0, 0, 0, int(timeout * 1000), ctypes.byref(ctypes.c_size_t())):
+        return True
+    return ctypes.get_last_error() != 1460  # only ERROR_TIMEOUT means busy; a window destroyed meanwhile is not
 
 
 def _message(box) -> str:
@@ -377,6 +416,23 @@ def _message(box) -> str:
 def _asks_about(text: str, name: str | None) -> bool:
     """The unsaved-changes prompt quotes the open project's name, e.g. 'Do you want to save "Untitled"?'."""
     return bool(name) and any(f"{a}{name}{b}" in text for a, b in ('""', "“”", "「」", "『』", "''"))
+
+
+def _ensure_closed(w, box, text: str) -> None:
+    # w, not main_window(): its own windows answer at once, and this may run while VOCALOID6 sets up a new project
+    if not _wait(lambda: box not in dialogs(w), 3):
+        raise VocaloidError(f"VOCALOID6 shows a box this server cannot close: {text}. Close it in VOCALOID6",
+                            f"このサーバーで閉じられないボックスがあります: {text}。VOCALOID6 で閉じてください")
+
+
+def _answer_unsaved(w, box, text: str, before: str | None, force: bool) -> None:
+    """The unsaved-changes question (it quotes the open project's name) is answered as _resolve_unsaved_prompt does;
+    any other question is left to the user."""
+    if not _asks_about(text, before):
+        raise VocaloidError(f"VOCALOID6 is asking: {text}. Answer it in VOCALOID6, then call vocaloid_status",
+                            f"VOCALOID6 が質問しています: {text}。VOCALOID6 で答えてから vocaloid_status を呼んでください")
+    _resolve_unsaved_prompt(w, force)  # raises unless force
+    _ensure_closed(w, box, text)
 
 
 def finish_load(w, path: str, force: bool = False, before: str | None = None) -> list[dict]:
@@ -395,19 +451,16 @@ def finish_load(w, path: str, force: bool = False, before: str | None = None) ->
             break
         text = _message(box)
         if is_question(box):
-            if not _asks_about(text, before):  # not the unsaved-changes prompt: the user decides
-                raise VocaloidError(f"VOCALOID6 is asking: {text}. Answer it in VOCALOID6, then call vocaloid_status",
-                                    f"VOCALOID6 が質問しています: {text}。VOCALOID6 で答えてから vocaloid_status を呼んでください")
-            _resolve_unsaved_prompt(w, force)  # raises unless force
+            _answer_unsaved(w, box, text, before, force)  # raises unless it is the unsaved prompt and force
         else:
             msgs.append(text)
             _press_id(box, "1", "2") or _press(box, "OK", "Close")  # IDOK / an OK-only box's single button
-        # w, not main_window(): finding the window takes seconds while VOCALOID6 sets up the project it falls back to
-        _wait(lambda: box not in dialogs(w), 3)
+            _ensure_closed(w, box, text)
     w = main_window()  # once: opening from the Home window may have replaced it
     _idle(w)
     # a failed load makes VOCALOID6 start a new project, so the title shows it even when the old one had the same name
-    if _wait_title(w, stem, 3) and not (msgs and _wait(lambda: project_name(w) != stem, 2)):
+    # (a title that cannot be read is not taken as that switch)
+    if _wait_title(w, stem, 3) and not (msgs and _wait(lambda: project_name(w) not in (None, stem), 2)):
         return [{"dialog": "message", "text": m} for m in msgs]
     now = project_name(w)
     en = f"{' / '.join(msgs)}; " if msgs else ""
@@ -431,12 +484,17 @@ def open_project(path: str, force: bool = False) -> dict:
         _menu_path(w, ["File", "Open..."])
         # VOCALOID6 may ask about unsaved changes before or after the file dialog
         _wait(lambda: any(d.element_info.class_name == SELECTORS["file_dialog_class"] for d in dialogs(w)), 5)
-        if _message_box(w):
-            _resolve_unsaved_prompt(w, force)
+        box = _message_box(w)
+        if box and is_question(box):
+            _answer_unsaved(w, box, _message(box), before, force)
+        elif box:
+            raise VocaloidError(f"VOCALOID6 shows: {_message(box)}. Close it in VOCALOID6, then try again",
+                                f"VOCALOID6 の表示: {_message(box)}。VOCALOID6 で閉じてから、もう一度試してください")
     _file_dialog(w, path)
     _wait(lambda: not any(_is_file_dialog(d) for d in dialogs(w)), 30)
-    # opened from a separate Home window: the editor window replaces it once the project is loaded
-    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w), 120)  # an error box ends the wait
+    _idle(w)  # the load runs now, on VOCALOID6's UI thread (finish_load reports it if it is still busy)
+    # opened from a separate Home window: the editor window replaces it after the load
+    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w), 10)
     w = main_window()
     events = handle_dialogs(w, 3)
     events += finish_load(w, path, force, before)
