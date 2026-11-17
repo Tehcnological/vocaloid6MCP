@@ -387,7 +387,7 @@ def is_question(box) -> bool:
     return any(b.element_info.automation_id in ("6", "7") for b in box.descendants(control_type="Button"))
 
 
-def _idle(w, timeout: float = 120) -> bool:
+def _idle(w, timeout: float = 240) -> bool:
     """True once VOCALOID6's UI thread answers a no-op message (WM_NULL). VOCALOID6 loads a project on that thread,
     so this returns when the load is done or a message box is up (a modal box keeps messages flowing). Checked live
     on small, large, same-name and broken projects."""
@@ -424,8 +424,8 @@ def _answer_unsaved(w, box, text: str, before: str | None, force: bool) -> None:
 
 
 def busy_error() -> VocaloidError:
-    return VocaloidError("VOCALOID6 is still busy after 2 minutes; call vocaloid_status later",
-                         "VOCALOID6 が2分たっても処理中です。しばらくしてから vocaloid_status を呼んでください")
+    return VocaloidError("VOCALOID6 is still busy after 4 minutes; call vocaloid_status later",
+                         "VOCALOID6 が4分たっても処理中です。しばらくしてから vocaloid_status を呼んでください")
 
 
 def _gone(w, box) -> bool:
@@ -471,8 +471,10 @@ def finish_load(w, path: str, force: bool = False, before: str | None = None) ->
             msgs.append(text)
             _press_id(box, "1", "2") or _press(box, "OK", "Close")  # IDOK / an OK-only box's single button
         last = box
-    else:  # out of passes with a box still up
-        raise _stuck_error(" / ".join(msgs))
+    else:  # out of passes: only a failure if a box is still up
+        box = _wait(lambda: _message_box(w), 0.5)
+        if box:
+            raise _stuck_error(_message(box))
     w = main_window()  # once: opening from the Home window may have replaced it
     _idle(w)
     # a failed load makes VOCALOID6 start a new project, so the title shows it even when the old one had the same name
@@ -514,8 +516,10 @@ def open_project(path: str, force: bool = False) -> dict:
     if not _idle(w):  # the load runs now, on VOCALOID6's UI thread
         raise busy_error()
     # opened from the separate Home window: once that window is gone, the editor replaces it (may take a while);
-    # otherwise the load is done and this ends at once
-    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w), 10 if _alive(w) else 120)
+    # otherwise the load is done and this ends at once (or after 10 s with the Home window still up: it failed)
+    start = time.time()
+    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w)
+          or (_alive(w) and time.time() - start > 10), 120)
     w = main_window()
     events = handle_dialogs(w, 3)
     events += finish_load(w, path, force, before)

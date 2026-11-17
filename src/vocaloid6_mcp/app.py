@@ -99,18 +99,12 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     def ready():
         w = ui.main_window(required=False)
         return w is not None and (not project_path or ui.is_editor(w) or ui._message_box(w))
-    shown = False
-    while time.time() < deadline and not (shown := ui.run(ready)):
+    while time.time() < deadline and not ui.run(ready):
         time.sleep(1)
     time.sleep(3)  # let the window finish building
     out = {"launched": True}
     if warnings:
         out["warnings"] = warnings
-    if project_path and not shown:  # it may still be loading the project: opening it again would load it twice
-        raise VocaloidError(f"VOCALOID6 started but did not show {project_path} within {wait_seconds:.0f} s; "
-                            "call vocaloid_status, then open_project if it is not open",
-                            f"VOCALOID6 は起動しましたが {wait_seconds:.0f} 秒以内に {project_path} を表示しませんでした。"
-                            "vocaloid_status を呼び、開いていなければ open_project を使ってください")
     if project_path:
         def check_boxes():  # a box: raise if the project did not open (or VOCALOID6 asks something), else report it
             w = ui.main_window(required=False)
@@ -120,12 +114,19 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
                 raise ui.busy_error()
             w = ui.main_window(required=False)  # the Home window may have been replaced by the editor meanwhile
             return ui.finish_load(w, project_path) if w and ui._message_box(w) else []
-        notes = ui.run(check_boxes)
+        try:
+            notes = ui.run(check_boxes)
+            stem = os.path.splitext(os.path.basename(project_path))[0]
+            # VOCALOID6 is idle here, so a project that is not open was not taken from the command line (or not yet
+            # shown): opening it now cannot load it twice
+            if ui.run(lambda: ui.project_name()) != stem:
+                out.update(ui.run(ui.open_project, project_path))
+        except VocaloidError as e:
+            if warnings:  # the start warnings matter even when the open fails
+                e.args = (f"{e} | {' '.join(warnings)}",)
+            raise
         if notes:
             out["dialogs"] = notes
-        stem = os.path.splitext(os.path.basename(project_path))[0]
-        if ui.run(lambda: ui.project_name()) != stem:
-            out.update(ui.run(ui.open_project, project_path))
     return {**out, **status()}
 
 
@@ -152,10 +153,14 @@ def close(force: bool = False) -> dict:
             for p in alive:
                 try:
                     p.kill()
-                except psutil.Error:
+                except psutil.NoSuchProcess:
                     pass
-            psutil.wait_procs(alive, timeout=10)  # a launch right after must not still see it
-            return {"closed": True, "killed": [p.pid for p in alive]}
+            # a launch right after must not still see it
+            killed, stuck = psutil.wait_procs(alive, timeout=10)
+            if stuck:
+                return {"closed": False, "still_running": [p.pid for p in stuck],
+                        "hint": "VOCALOID6 could not be ended. / VOCALOID6 を終了できませんでした。"}
+            return {"closed": True, "killed": [p.pid for p in killed]}
         return {"closed": False, "still_running": [p.pid for p in alive],
                 "hint": "VOCALOID6 did not close (busy or showing a dialog). / VOCALOID6 が閉じませんでした（処理中かダイアログ表示中）。"}
     return {"closed": True, "pids": [p.pid for p in gone]}
