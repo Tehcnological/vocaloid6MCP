@@ -106,21 +106,20 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     if warnings:
         out["warnings"] = warnings
     if project_path:
-        def check_boxes():  # a box: raise if the project did not open (or VOCALOID6 asks something), else report it
+        stem = os.path.splitext(os.path.basename(project_path))[0]
+
+        def finish():
             w = ui.main_window(required=False)
-            if w is None:
-                return []
-            if not ui._idle(w):  # the load from the command line is still running: never open it a second time
-                raise ui.busy_error()
-            w = ui.main_window(required=False)  # the Home window may have been replaced by the editor meanwhile
-            return ui.finish_load(w, project_path) if w and ui._message_box(w) else []
+            if w is None:  # the process runs but shows no window yet: still starting, so never open a second time
+                raise VocaloidError("VOCALOID6 is still starting; call vocaloid_status in a moment",
+                                    "VOCALOID6 はまだ起動中です。少ししてから vocaloid_status を呼んでください")
+            w = ui.settle(w)  # the command-line load is done (or never started) after this
+            notes = ui.finish_load(w, project_path) if ui._message_box(w) else []
+            # not open now means it was not taken from the command line: opening it cannot load it twice
+            return notes, (ui.open_project(project_path) if ui.project_name(w) != stem else {})
         try:
-            notes = ui.run(check_boxes)
-            stem = os.path.splitext(os.path.basename(project_path))[0]
-            # VOCALOID6 is idle here, so a project that is not open was not taken from the command line (or not yet
-            # shown): opening it now cannot load it twice
-            if ui.run(lambda: ui.project_name()) != stem:
-                out.update(ui.run(ui.open_project, project_path))
+            notes, opened = ui.run(finish)
+            out.update(opened)
         except VocaloidError as e:
             if warnings:  # the start warnings matter even when the open fails
                 e.args = (f"{e} | {' '.join(warnings)}",)
@@ -153,7 +152,7 @@ def close(force: bool = False) -> dict:
             for p in alive:
                 try:
                     p.kill()
-                except psutil.NoSuchProcess:
+                except psutil.Error:  # already gone, or not allowed: wait_procs below tells which
                     pass
             # a launch right after must not still see it
             killed, stuck = psutil.wait_procs(alive, timeout=10)

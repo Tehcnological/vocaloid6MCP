@@ -447,6 +447,18 @@ def _stuck_error(text: str) -> VocaloidError:
                          f"このサーバーで閉じられないボックスがあります: {text}。VOCALOID6 で閉じてください")
 
 
+def settle(w):
+    """Wait for a load to end: VOCALOID6 idle, then, when it loaded from the separate Home window, the editor that
+    replaces it (may take a while once the Home window is gone; 10 s with it still up means nothing is loading).
+    Returns the main window."""
+    if not _idle(w):  # the load runs on VOCALOID6's UI thread
+        raise busy_error()
+    start = time.time()
+    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w)
+          or (_alive(w) and time.time() - start > 10), 120)
+    return main_window()
+
+
 def finish_load(w, path: str, force: bool = False, before: str | None = None) -> list[dict]:
     """After the file dialog: wait until VOCALOID6 is idle, then deal with its message boxes. OK boxes are closed (a
     broken file gives two in a row); the unsaved-changes question is answered as _resolve_unsaved_prompt does (the
@@ -471,10 +483,12 @@ def finish_load(w, path: str, force: bool = False, before: str | None = None) ->
             msgs.append(text)
             _press_id(box, "1", "2") or _press(box, "OK", "Close")  # IDOK / an OK-only box's single button
         last = box
-    else:  # out of passes: only a failure if a box is still up
+    else:  # out of passes: only a failure if a box is still up once VOCALOID6 is idle
+        if not _idle(w):
+            raise busy_error()
         box = _wait(lambda: _message_box(w), 0.5)
         if box:
-            raise _stuck_error(_message(box))
+            raise _stuck_error(" / ".join(msgs + [_message(box)]))
     w = main_window()  # once: opening from the Home window may have replaced it
     _idle(w)
     # a failed load makes VOCALOID6 start a new project, so the title shows it even when the old one had the same name
@@ -513,14 +527,7 @@ def open_project(path: str, force: bool = False) -> dict:
                                 f"VOCALOID6 の表示: {_message(box)}。VOCALOID6 で閉じてから、もう一度試してください")
     _file_dialog(w, path)
     _wait(lambda: not any(_is_file_dialog(d) for d in dialogs(w)), 30)
-    if not _idle(w):  # the load runs now, on VOCALOID6's UI thread
-        raise busy_error()
-    # opened from the separate Home window: once that window is gone, the editor replaces it (may take a while);
-    # otherwise the load is done and this ends at once (or after 10 s with the Home window still up: it failed)
-    start = time.time()
-    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w)
-          or (_alive(w) and time.time() - start > 10), 120)
-    w = main_window()
+    w = settle(w)
     events = handle_dialogs(w, 3)
     events += finish_load(w, path, force, before)
     events += handle_dialogs(w, 2)
