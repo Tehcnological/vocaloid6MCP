@@ -216,6 +216,8 @@ def new_project(path: str, title: str | None = None, bpm: float = 120, numer: in
     VOCALOID6 (force=true discards unsaved changes there). / 空の .vpr を作成します（トラックは add_track で追加）。
     open_in_vocaloid=true で VOCALOID6 で開きます（force=true で VOCALOID6 の未保存の変更を破棄）。"""
     path = os.path.abspath(path)
+    if not path.lower().endswith(".vpr"):  # checked before the delete below: overwrite must never remove another kind of file
+        raise VocaloidError(f"Project path must end with .vpr: {path}", f"プロジェクトのパスは .vpr で終わる必要があります: {path}")
     if os.path.exists(path) and not overwrite:
         raise VocaloidError(f"{path} exists; pass overwrite=true to replace it", f"{path} は既に存在します。置き換えるなら overwrite=true")
     if os.path.exists(path):
@@ -521,13 +523,17 @@ def import_midi(midi_path: str, track_type: str = "ai", import_tempo: bool = Tru
 
 
 @_tool()
-def export_vsqx(output: str, version: int = 4, path: str | None = None) -> dict:
+def export_vsqx(output: str, version: int = 4, path: str | None = None, overwrite: bool = False) -> dict:
     """Write a .vsqx for the VOCALOID4 (version=4) or VOCALOID3 (version=3) editor. Only classic VOCALOID tracks are
     written; positions shift by one pre-measure bar, as those editors count. / VOCALOID4（version=4）または
     VOCALOID3（version=3）用の .vsqx を書き出します。VOCALOID トラックのみ。位置はプリメジャー1小節分ずれます。"""
+    output = os.path.abspath(output)
+    if not output.lower().endswith(".vsqx"):  # project and track names are caller text: never write them under another file type
+        raise VocaloidError("Output must be a .vsqx file", "出力ファイルは .vsqx にしてください")
+    if os.path.exists(output) and not overwrite:
+        raise VocaloidError(f"{output} exists; pass overwrite=true to replace it", f"{output} は既に存在します。置き換えるなら overwrite=true")
     seq = vpr.load(path) if path else ui.run(live.read, lambda s: s)[0]
     data, warnings = vsqx.export(seq, version)
-    output = os.path.abspath(output)
     os.makedirs(os.path.dirname(output), exist_ok=True)
     with open(output, "wb") as f:
         f.write(data)

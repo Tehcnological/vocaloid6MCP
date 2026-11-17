@@ -111,6 +111,13 @@ async def file_tests(c: Client, tmp: str) -> dict:
     ok(r["summary"]["file_version"] == "5.0.0", "a new project is VOCALOID5-compatible", r["summary"])
     err = await c.error("new_project", path=path)
     ok("overwrite" in err, "new_project refuses to overwrite")
+    keep = os.path.join(tmp, "keep.txt")
+    with open(keep, "w") as f:
+        f.write("keep")
+    await c.error("new_project", path=keep, overwrite=True)
+    await c.error("export_midi", output=keep)
+    await c.error("export_vsqx", output=keep, path=path, overwrite=True)
+    ok(open(keep).read() == "keep", "tools never delete or overwrite a file of another type")
     tracks = {}
     if ai:
         r = await c("add_track", voice=ai["name"], language="ja", path=path)
@@ -239,6 +246,7 @@ async def file_tests(c: Client, tmp: str) -> dict:
             out = os.path.join(tmp, f"test_v{ver}.vsqx")
             r = await c("export_vsqx", output=out, version=ver, path=path)
             ok(os.path.getsize(out) > 500, f"export_vsqx v{ver}")
+            ok("overwrite" in await c.error("export_vsqx", output=out, version=ver, path=path), "export_vsqx refuses to overwrite")
             ok(any("skipped" in w for w in r["warnings"]) == ("ai" in tracks), f"v{ver}: AI tracks are skipped with a warning", r)
             check = validate_vsqx(out, ver)
             if check is None:
