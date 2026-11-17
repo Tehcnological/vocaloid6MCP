@@ -80,8 +80,7 @@ def spawn(args: list[str], cwd: str) -> list[str]:
             "エディターも閉じることがあります。こまめに保存してください。"]
 
 
-def _exited_error() -> VocaloidError:
-    return VocaloidError("VOCALOID6 exited while starting", "VOCALOID6 が起動中に終了しました")
+_exited_error = ui.exited_error
 
 
 def _with_warnings(e: VocaloidError, warnings: list[str]) -> VocaloidError:
@@ -107,9 +106,8 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     warnings = spawn([exe] + ([project_path] if project_path else []), os.path.dirname(exe))
     deadline = time.time() + wait_seconds
     # with a project, wait for the editor window, not a Home window shown while it loads
-    from comtypes import COMError
-
     def ready():
+        from comtypes import COMError  # here, on the UI thread: importing comtypes sets up COM on the importing thread
         try:
             w = ui.main_window(required=False)
             return w is not None and bool(not project_path or ui.is_editor(w) or ui._message_box(w))
@@ -127,16 +125,22 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
         stem = os.path.splitext(os.path.basename(project_path))[0]
 
         def finish():
-            w = ui.main_window(required=False)
-            if w is None and not processes():
-                raise _exited_error()
-            if w is None:  # the process runs but shows no window yet: still starting, so never open a second time
-                raise VocaloidError("VOCALOID6 is still starting; call vocaloid_status in a moment",
-                                    "VOCALOID6 はまだ起動中です。少ししてから vocaloid_status を呼んでください")
-            w = ui.settle(w)  # the command-line load is done (or never started) after this
-            notes, w = ui.finish_load(w, project_path) if ui._message_box(w) else ([], w)
-            # not open now means it was not taken from the command line, so opening it cannot load it twice
-            return notes, (ui.open_project(project_path) if ui.project_name(w) != stem else {})
+            from comtypes import COMError
+            try:
+                w = ui.main_window(required=False)
+                if w is None and not processes():
+                    raise _exited_error()
+                if w is None:  # the process runs but shows no window yet: still starting, so never open twice
+                    raise VocaloidError("VOCALOID6 is still starting; call vocaloid_status in a moment",
+                                        "VOCALOID6 はまだ起動中です。少ししてから vocaloid_status を呼んでください")
+                w = ui.settle(w)  # the command-line load is done (or never started) after this
+                notes, w = ui.finish_load(w, project_path) if ui._message_box(w) else ([], w)
+                # not open now means it was not taken from the command line, so opening it cannot load it twice
+                return notes, (ui.open_project(project_path) if ui.project_name(w) != stem else {})
+            except COMError:  # its window vanished: VOCALOID6 exited (else a real error)
+                if not processes():
+                    raise _exited_error() from None
+                raise
         try:
             notes, opened = ui.run(finish)
             out.update(opened)

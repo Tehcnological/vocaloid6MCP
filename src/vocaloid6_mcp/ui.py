@@ -456,6 +456,10 @@ def _stuck_error(text: str) -> VocaloidError:
                          f"このサーバーで閉じられないボックスがあります: {text}。VOCALOID6 で閉じてください")
 
 
+def exited_error() -> VocaloidError:
+    return VocaloidError("VOCALOID6 exited while starting or loading", "VOCALOID6 が起動中か読み込み中に終了しました")
+
+
 def settle(w):
     """Wait for a load to end: VOCALOID6 idle, then, when it loaded from the separate Home window, the editor that
     replaces it (may take a while once the Home window is gone; 10 s with it still up means nothing is loading).
@@ -463,8 +467,10 @@ def settle(w):
     if not _idle(w):  # the load runs on VOCALOID6's UI thread
         raise busy_error()
     start = time.time()
-    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w)
+    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w) or not processes()
           or (_alive(w) and time.time() - start > 10), 120)
+    if not processes():
+        raise exited_error()
     return main_window()
 
 
