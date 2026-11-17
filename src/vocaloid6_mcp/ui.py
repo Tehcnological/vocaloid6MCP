@@ -57,9 +57,8 @@ def run(fn, *args, timeout: float = 600, **kwargs):
         try:
             return fn(*args, **kwargs)
         except comtypes.COMError as e:
-            if not processes():  # any tool: not only a start or a load
-                raise VocaloidError("VOCALOID6 exited; call launch_vocaloid to start it again",
-                                    "VOCALOID6 が終了しました。launch_vocaloid で起動し直してください") from None
+            if not processes():
+                raise exited_error() from None
             raise VocaloidError(f"VOCALOID6 did not answer: {e}", f"VOCALOID6 が応答しませんでした: {e}") from e
     return _pool.submit(call).result(timeout=timeout)
 
@@ -464,7 +463,9 @@ def _stuck_error(text: str) -> VocaloidError:
 
 
 def exited_error() -> VocaloidError:
-    return VocaloidError("VOCALOID6 exited while starting or loading", "VOCALOID6 が起動中か読み込み中に終了しました")
+    """VOCALOID6 is gone (during a start, a load or any other tool)."""
+    return VocaloidError("VOCALOID6 exited; call launch_vocaloid to start it again",
+                         "VOCALOID6 が終了しました。launch_vocaloid で起動し直してください")
 
 
 def still_loading_error() -> VocaloidError:
