@@ -435,6 +435,18 @@ def _gone(w, box) -> bool:
         return True
 
 
+def _alive(w) -> bool:
+    try:
+        return bool(_win32().IsWindow(w.handle))
+    except Exception:  # noqa: BLE001 - a stale element
+        return False
+
+
+def _stuck_error(text: str) -> VocaloidError:
+    return VocaloidError(f"VOCALOID6 shows a box this server cannot close: {text}. Close it in VOCALOID6",
+                         f"このサーバーで閉じられないボックスがあります: {text}。VOCALOID6 で閉じてください")
+
+
 def finish_load(w, path: str, force: bool = False, before: str | None = None) -> list[dict]:
     """After the file dialog: wait until VOCALOID6 is idle, then deal with its message boxes. OK boxes are closed (a
     broken file gives two in a row); the unsaved-changes question is answered as _resolve_unsaved_prompt does (the
@@ -442,18 +454,16 @@ def finish_load(w, path: str, force: bool = False, before: str | None = None) ->
     opened anyway (a box may be only a warning), else raises with their text."""
     stem = os.path.splitext(os.path.basename(path))[0]
     msgs, last = [], None
-    for _ in range(6):
+    for _ in range(12):  # each box takes a pass, plus one if it is slow to close
         if not _idle(w):
             raise busy_error()
         box = _wait(lambda: _message_box(w), 0.5)  # also a box posted just after the load
         if not box:
             break
         text = _message(box)
-        # the box answered last time is still there once VOCALOID6 is idle again: it did not close
-        if box == last and not _wait(lambda: _gone(w, box), 2):
-            raise VocaloidError(f"VOCALOID6 shows a box this server cannot close: {text}. Close it in VOCALOID6",
-                                f"このサーバーで閉じられないボックスがあります: {text}。VOCALOID6 で閉じてください")
-        if box == last:
+        if box == last:  # answered last pass and still there once VOCALOID6 is idle again
+            if not _wait(lambda: _gone(w, box), 2):
+                raise _stuck_error(text)
             continue
         if is_question(box):
             _answer_unsaved(w, box, text, before, force)  # raises unless it is the unsaved prompt and force
@@ -461,6 +471,8 @@ def finish_load(w, path: str, force: bool = False, before: str | None = None) ->
             msgs.append(text)
             _press_id(box, "1", "2") or _press(box, "OK", "Close")  # IDOK / an OK-only box's single button
         last = box
+    else:  # out of passes with a box still up
+        raise _stuck_error(" / ".join(msgs))
     w = main_window()  # once: opening from the Home window may have replaced it
     _idle(w)
     # a failed load makes VOCALOID6 start a new project, so the title shows it even when the old one had the same name
@@ -492,14 +504,18 @@ def open_project(path: str, force: bool = False) -> dict:
         box = _message_box(w)
         if box and is_question(box):
             _answer_unsaved(w, box, _message(box), before, force)
+            if not _wait(lambda: _gone(w, box), 3):  # nothing loads yet here, so the box closes at once
+                raise _stuck_error(_message(box))
         elif box:
             raise VocaloidError(f"VOCALOID6 shows: {_message(box)}. Close it in VOCALOID6, then try again",
                                 f"VOCALOID6 の表示: {_message(box)}。VOCALOID6 で閉じてから、もう一度試してください")
     _file_dialog(w, path)
     _wait(lambda: not any(_is_file_dialog(d) for d in dialogs(w)), 30)
-    _idle(w)  # the load runs now, on VOCALOID6's UI thread (finish_load reports it if it is still busy)
-    # opened from a separate Home window: the editor window replaces it after the load (ends at once otherwise)
-    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w), 120)
+    if not _idle(w):  # the load runs now, on VOCALOID6's UI thread
+        raise busy_error()
+    # opened from the separate Home window: once that window is gone, the editor replaces it (may take a while);
+    # otherwise the load is done and this ends at once
+    _wait(lambda: is_editor(main_window(required=False)) or _message_box(w), 10 if _alive(w) else 120)
     w = main_window()
     events = handle_dialogs(w, 3)
     events += finish_load(w, path, force, before)

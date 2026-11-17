@@ -99,12 +99,18 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     def ready():
         w = ui.main_window(required=False)
         return w is not None and (not project_path or ui.is_editor(w) or ui._message_box(w))
-    while time.time() < deadline and not ui.run(ready):
+    shown = False
+    while time.time() < deadline and not (shown := ui.run(ready)):
         time.sleep(1)
     time.sleep(3)  # let the window finish building
     out = {"launched": True}
     if warnings:
         out["warnings"] = warnings
+    if project_path and not shown:  # it may still be loading the project: opening it again would load it twice
+        raise VocaloidError(f"VOCALOID6 started but did not show {project_path} within {wait_seconds:.0f} s; "
+                            "call vocaloid_status, then open_project if it is not open",
+                            f"VOCALOID6 は起動しましたが {wait_seconds:.0f} 秒以内に {project_path} を表示しませんでした。"
+                            "vocaloid_status を呼び、開いていなければ open_project を使ってください")
     if project_path:
         def check_boxes():  # a box: raise if the project did not open (or VOCALOID6 asks something), else report it
             w = ui.main_window(required=False)
@@ -144,7 +150,11 @@ def close(force: bool = False) -> dict:
     if alive:
         if force:
             for p in alive:
-                p.kill()
+                try:
+                    p.kill()
+                except psutil.Error:
+                    pass
+            psutil.wait_procs(alive, timeout=10)  # a launch right after must not still see it
             return {"closed": True, "killed": [p.pid for p in alive]}
         return {"closed": False, "still_running": [p.pid for p in alive],
                 "hint": "VOCALOID6 did not close (busy or showing a dialog). / VOCALOID6 が閉じませんでした（処理中かダイアログ表示中）。"}
