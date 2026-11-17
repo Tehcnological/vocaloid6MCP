@@ -116,7 +116,13 @@ def _vocaloid_windows() -> list:
         return True
 
     u.EnumWindows(_ENUM_PROC(collect), 0)
-    return [UIAWrapper(UIAElementInfo(h)) for h in found]
+    wrapped = []
+    for h in found:
+        try:
+            wrapped.append(UIAWrapper(UIAElementInfo(h)))
+        except Exception:  # noqa: BLE001 - a window that closed after it was listed (e.g. a splash at startup)
+            pass
+    return wrapped
 
 
 def main_window(required: bool = True):
@@ -462,11 +468,12 @@ def settle(w):
     return main_window()
 
 
-def finish_load(w, path: str, force: bool = False, before: str | None = None) -> list[dict]:
+def finish_load(w, path: str, force: bool = False, before: str | None = None) -> tuple[list[dict], object]:
     """After the file dialog: wait until VOCALOID6 is idle, then deal with its message boxes. OK boxes are closed (a
     broken file gives two in a row); the unsaved-changes question is answered as _resolve_unsaved_prompt does (the
     load starts after it); any other question is left to the user. Returns the OK boxes as notes if the project
-    opened anyway (a box may be only a warning), else raises with their text."""
+    opened anyway (a box may be only a warning), with the main window as it is now (the editor may have replaced the
+    Home window); else raises with their text."""
     stem = os.path.splitext(os.path.basename(path))[0]
     msgs, last = [], None
     for _ in range(12):  # each box takes a pass, plus one if it is slow to close
@@ -497,7 +504,7 @@ def finish_load(w, path: str, force: bool = False, before: str | None = None) ->
     # a failed load makes VOCALOID6 start a new project, so the title shows it even when the old one had the same name
     # (a title that cannot be read is not taken as that switch)
     if _wait_title(w, stem, 3) and not (msgs and _wait(lambda: project_name(w) not in (None, stem), 2)):
-        return [{"dialog": "message", "text": m} for m in msgs]
+        return [{"dialog": "message", "text": m} for m in msgs], w
     now = project_name(w)
     en = f"{' / '.join(msgs)}; " if msgs else ""
     ja = f"{' / '.join(msgs)}。" if msgs else ""
@@ -532,8 +539,8 @@ def open_project(path: str, force: bool = False) -> dict:
     _wait(lambda: not any(_is_file_dialog(d) for d in dialogs(w)), 30)
     w = settle(w)
     events = handle_dialogs(w, 3)
-    events += finish_load(w, path, force, before)
-    events += handle_dialogs(main_window(), 2)  # the editor may have replaced the Home window meanwhile
+    notes, w = finish_load(w, path, force, before)
+    events += notes + handle_dialogs(w, 2)
     return {"opened": path, "dialogs": events}
 
 

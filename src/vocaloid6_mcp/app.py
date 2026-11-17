@@ -97,13 +97,17 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     deadline = time.time() + wait_seconds
     # with a project, wait for the editor window, not a Home window shown while it loads
     def ready():
+        from comtypes import COMError
         try:
             w = ui.main_window(required=False)
             return w is not None and bool(not project_path or ui.is_editor(w) or ui._message_box(w))
-        except Exception:  # noqa: BLE001 - windows come and go while VOCALOID6 starts: ask again next second
+        except COMError:  # a window closed while it was read (VOCALOID6 is starting): ask again next second
             return False
-    while time.time() < deadline and not ui.run(ready):
+    while time.time() < deadline and processes() and not ui.run(ready):
         time.sleep(1)
+    if not processes():
+        raise VocaloidError("VOCALOID6 exited while starting" + (f" | {' '.join(warnings)}" if warnings else ""),
+                            "VOCALOID6 が起動中に終了しました")
     time.sleep(3)  # let the window finish building
     out = {"launched": True}
     if warnings:
@@ -113,16 +117,13 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
 
         def finish():
             w = ui.main_window(required=False)
-            if w is None and not processes():
-                raise VocaloidError("VOCALOID6 exited while starting", "VOCALOID6 が起動中に終了しました")
             if w is None:  # the process runs but shows no window yet: still starting, so never open a second time
                 raise VocaloidError("VOCALOID6 is still starting; call vocaloid_status in a moment",
                                     "VOCALOID6 はまだ起動中です。少ししてから vocaloid_status を呼んでください")
             w = ui.settle(w)  # the command-line load is done (or never started) after this
-            notes = ui.finish_load(w, project_path) if ui._message_box(w) else []
-            # the editor may have replaced the window by now; not open means it was not taken from the command
-            # line, so opening it cannot load it twice
-            return notes, (ui.open_project(project_path) if ui.project_name(ui.main_window()) != stem else {})
+            notes, w = ui.finish_load(w, project_path) if ui._message_box(w) else ([], w)
+            # not open now means it was not taken from the command line, so opening it cannot load it twice
+            return notes, (ui.open_project(project_path) if ui.project_name(w) != stem else {})
         try:
             notes, opened = ui.run(finish)
             out.update(opened)
