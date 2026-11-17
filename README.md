@@ -2,7 +2,7 @@
 
 [日本語版 README はこちら](README.ja.md)
 
-Lets Claude (Claude Desktop / Claude Code) operate the **VOCALOID6 Editor** on Windows and write projects for
+Lets AI assistants in any MCP client (Claude, Cursor, VS Code, Codex, Gemini CLI and others) operate the **VOCALOID6 Editor** on Windows and write projects for
 **VOCALOID3, 4, 5 and 6**: melodies and lyrics in English, Japanese, Chinese, Korean and Spanish, any installed
 voicebank (VOCALOID:AI banks and classic VOCALOID3/4/5 banks), pitch and expression curves, playback and
 WAV/MIDI export.
@@ -33,54 +33,168 @@ reports which still match after a VOCALOID6 update. The project tools do not dep
 ## Requirements
 
 - Windows with VOCALOID6 Editor (tested with 6.13; default install `C:\Program Files\VOCALOID6\Editor`)
-- Python 3.11+ and [uv](https://docs.astral.sh/uv/) (or pip)
 - Voicebanks: VOCALOID6 AI banks and VOCALOID3/4/5 banks that VOCALOID6 can load. VOCALOID2 is not supported.
+- Any MCP client that runs local (stdio) servers: Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Cline,
+  Continue, Codex CLI, Gemini CLI, LM Studio and others.
 
 ## Install
 
+Pick one way to get the server. Both give your MCP client a command to start.
+
+**A. Single file, no Python needed.** Download `vocaloid6-mcp.exe` from this repository's **Releases** page and put
+it in a folder of your choice, e.g. `C:\Tools\`. The command is the path to the file: `C:\Tools\vocaloid6-mcp.exe`.
+
+- Optional check that the download is intact: `Get-FileHash C:\Tools\vocaloid6-mcp.exe` in PowerShell must print
+  the same value as `SHA256SUMS.txt` on the release.
+- The exe is not code-signed. If Windows blocks it: right-click the file, Properties, tick **Unblock**, OK.
+- Japanese kanji-to-kana support (`pykakasi`) is built in.
+
+**B. uvx, always the latest code.** Needs [uv](https://docs.astral.sh/uv/). Nothing to clone; uv downloads and caches
+the server the first time the client starts it. The command is `uvx` with these arguments:
+
+```text
+--from "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP" vocaloid6-mcp
+```
+
+**C. From a clone (to change the code).** Needs Python 3.11+ and uv:
+
 ```bash
-git clone <this repo> vocaloid6-mcp
+git clone https://github.com/Tehcnological/vocaloid6MCP vocaloid6-mcp
+```
+
+```bash
 cd vocaloid6-mcp
 uv venv -p 3.11
 uv pip install -e ".[kanji]"
 ```
 
-The `kanji` extra installs `pykakasi`, which turns Japanese kanji lyrics into hiragana.
+The command is then `C:\path\to\vocaloid6-mcp\.venv\Scripts\vocaloid6-mcp.exe`.
 
-### Register with Claude
+### Register with your MCP client
 
-**Claude Code**
+The examples use route A (`C:\Tools\vocaloid6-mcp.exe`). For route B, replace the command line with `"command":
+"uvx"` plus the `args` shown under each client. Restart the client (or reload its MCP servers) after editing a config
+file. In JSON every `\` in a path is written `\\`.
 
-```bash
-claude mcp add vocaloid6 -- "C:\path\to\vocaloid6-mcp\.venv\Scripts\vocaloid6-mcp.exe"
-```
-
-**Claude Desktop**: edit `%APPDATA%\Claude\claude_desktop_config.json`:
+**Claude Desktop, Cursor, Windsurf, Cline, Gemini CLI, LM Studio** all use the same JSON shape:
 
 ```json
 {
   "mcpServers": {
     "vocaloid6": {
-      "command": "C:\\path\\to\\vocaloid6-mcp\\.venv\\Scripts\\vocaloid6-mcp.exe"
+      "command": "C:\\Tools\\vocaloid6-mcp.exe",
+      "args": []
     }
   }
 }
 ```
 
-Optional environment variable: `VOCALOID6_EXE` (path to `VOCALOID6.exe`). Optionally copy the `skill` folder into
-your Claude skills folder (e.g. `.claude/skills/vocaloid6/`). Its `scripts/` are the song tools the skill uses for
-songs over a backing track: `analyze_backing.py` (tempo, beat 1, key, chords per bar, chord loop), `check8.py` (8-bar
-click + scale check), `assemble.py` and `mix.py` (stem placement and vocal mix). They are not part of the server and
-need their own Python with `librosa` and `soundfile`, plus ffmpeg on PATH:
+Route B: `"command": "uvx", "args": ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP", "vocaloid6-mcp"]`.
+
+| Client | Config file (merge the `vocaloid6` entry into `mcpServers`) |
+|---|---|
+| Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` (Settings, Developer, Edit Config). The Microsoft Store version may read `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude_desktop_config.json` instead. |
+| Cursor | `%USERPROFILE%\.cursor\mcp.json` (all projects) or `.cursor\mcp.json` (one project). Add `"type": "stdio"` to the entry. |
+| Windsurf (now Devin Desktop) | `%APPDATA%\devin\mcp_config.json`; older Windsurf versions: `%USERPROFILE%\.codeium\windsurf\mcp_config.json` |
+| Cline | Cline panel, MCP Servers, Configure, **Configure MCP Servers** opens `cline_mcp_settings.json` |
+| Gemini CLI | `%USERPROFILE%\.gemini\settings.json`, or in one step: `gemini mcp add -s user vocaloid6 "C:\Tools\vocaloid6-mcp.exe"` |
+| LM Studio (0.3.17+) | `%USERPROFILE%\.lmstudio\mcp.json` (Program tab, Install, Edit mcp.json) |
+
+**Claude Code** (one command, no file to edit):
 
 ```bash
-python -m venv %LOCALAPPDATA%\song-analysisenv
-%LOCALAPPDATA%\song-analysisenv\Scripts\pip install librosa soundfile
+claude mcp add --scope user vocaloid6 -- "C:\Tools\vocaloid6-mcp.exe"
 ```
+
+```bash
+claude mcp add --scope user vocaloid6 -- uvx --from "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP" vocaloid6-mcp
+```
+
+**VS Code (GitHub Copilot, agent mode)**: Command Palette, **MCP: Open User Configuration** (or `.vscode\mcp.json` in
+a workspace). The top-level key is `servers`, not `mcpServers`:
+
+```json
+{
+  "servers": {
+    "vocaloid6": {
+      "type": "stdio",
+      "command": "C:\\Tools\\vocaloid6-mcp.exe"
+    }
+  }
+}
+```
+
+Copilot's newer shared files, `%USERPROFILE%\.copilot\mcp-config.json` and `.mcp.json` in a workspace, take the
+`mcpServers` shape above instead.
+
+**Continue** (MCP works in agent mode only): create `.continue\mcpServers\vocaloid6.yaml` in your workspace:
+
+```yaml
+name: VOCALOID6
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: vocaloid6
+    type: stdio
+    command: 'C:\Tools\vocaloid6-mcp.exe'
+```
+
+Route B: `command: uvx` and `args: ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP", "vocaloid6-mcp"]`.
+
+**Codex CLI**: add to `%USERPROFILE%\.codex\config.toml` (in TOML, single quotes keep `\` as is):
+
+```toml
+[mcp_servers.vocaloid6]
+command = 'C:\Tools\vocaloid6-mcp.exe'
+tool_timeout_sec = 300  # live edits and WAV export can take longer than the 60 s default
+```
+
+Route B: `command = "uvx"` and `args = ["--from", "vocaloid6-mcp[kanji] @ git+https://github.com/Tehcnological/vocaloid6MCP", "vocaloid6-mcp"]`.
+Or in one step: `codex mcp add vocaloid6 -- "C:\Tools\vocaloid6-mcp.exe"` (then add `tool_timeout_sec` by hand).
+
+Optional environment variable: `VOCALOID6_EXE` (path to `VOCALOID6.exe`). Add it as `"env": {"VOCALOID6_EXE":
+"D:\\Apps\\VOCALOID6\\Editor\\VOCALOID6.exe"}` in JSON, or `env = { VOCALOID6_EXE = 'D:\Apps\...' }` in TOML.
+
+### Usage rules in every client
+
+The server sends its essential rules (ticks, indexes, lyrics, live-tool safety) as MCP instructions, and the
+`usage_guide` tool returns the full workflow and quality guide ([skill/SKILL.md](skill/SKILL.md)). Some clients do
+not pass server instructions to the model; if the assistant skips steps, ask it to "call usage_guide first". Claude
+users can install the `skill` folder as a skill instead (e.g. `.claude/skills/vocaloid6/`). See
+[AGENTS.md](AGENTS.md) for agents and clients without skill support.
+
+The server has 45 tools. VS Code allows 128 tools per request and Cursor used to send only the first 40, so if a
+client warns about too many tools, turn off the ones you do not need (VS Code: the tools picker in Chat; Codex:
+`enabled_tools`; Gemini CLI: `includeTools`).
+
+### Song scripts (optional)
+
+The skill's `scripts/` are the song tools for songs over a backing track: `analyze_backing.py` (tempo, beat 1, key,
+chords per bar, chord loop), `check8.py` (8-bar click + scale check), `assemble.py` and `mix.py` (stem placement and
+vocal mix). They are not part of the server and need their own Python with `librosa` and `soundfile`, plus ffmpeg on
+PATH:
+
+```bash
+python -m venv %LOCALAPPDATA%\song-analysisenv
+```
+
+```bash
+%LOCALAPPDATA%\song-analysisenv\Scripts\pip install librosa soundfile
+```
+
+### Build the single file yourself
+
+```bash
+powershell -ExecutionPolicy Bypass -File packaging\build.ps1
+```
+
+It needs uv and writes `dist\vocaloid6-mcp.exe` (PyInstaller, about 20 MB), `SHA256SUMS.txt` and the list of packages
+inside. Pushing a tag such as `v0.4.0` runs the same script on GitHub Actions and attaches the files to a draft
+release, which you publish by hand.
 
 ## Usage
 
-Ask Claude things like:
+Ask your assistant things like:
 
 - "Is VOCALOID6 ready?" → `vocaloid_status`
 - "Make a new song with an AI voicebank at 128 BPM and sing さくら さくら on A4 A4 B4."
@@ -145,7 +259,13 @@ banks the language is guessed from the bank name (`language_source: "name"`).
 uv pip install -e ".[kanji,test]"
 .venv\Scripts\python tests\e2e_test.py          # file, voicebank, VSQX and utility tools over stdio
 .venv\Scripts\python tests\e2e_test.py --live   # also drives the running VOCALOID6 (needs a voicebank)
+.venv\Scripts\python tests\schema_check.py      # every tool schema against strict client rules
 ```
+
+`schema_check.py` is a plain MCP client that lists the tools and checks each input schema against the strictest
+documented rules of Gemini, Codex, VS Code and Cursor (rules listed at the top of the file). Set
+`MCP_SERVER_EXE=dist\vocaloid6-mcp.exe` to run `e2e_test.py` against the single-file build, or pass the exe to
+`schema_check.py`.
 
 The live test opens its own temporary project with `force=false`, so it stops if VOCALOID6 has unsaved changes.
 With `lxml` installed the VSQX output is validated against Yamaha's `vsq3.xsd` / `vsq4.xsd`.

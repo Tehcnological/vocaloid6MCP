@@ -15,8 +15,10 @@ import shutil
 import sys
 import tempfile
 
-from mcp import ClientSession, StdioServerParameters
+from mcp import ClientSession
 from mcp.client.stdio import stdio_client
+
+from _server import server_params
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 XSD_DIR = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "VOCALOID6", "Editor")
@@ -69,6 +71,7 @@ def validate_vsqx(path: str, version: int):
 async def file_tests(c: Client, tmp: str) -> dict:
     print("[utilities]")
     ok(await c("note_to_midi", note="C4") == 60, "C4 = 60")
+    ok((await c("usage_guide")).startswith("# VOCALOID6 vocals"), "usage_guide returns the skill text without front matter")
     ok(await c("note_to_midi", note="Bb3") == 58 and await c("note_to_midi", note="A#3") == 58, "A#3 = Bb3 = 58")
     ok(await c("midi_to_note", midi=61) == "C#4", "61 = C#4")
     ok(await c("beats_to_ticks", beats=1.5) == 720, "1.5 beats = 720 ticks")
@@ -289,7 +292,9 @@ async def live_tests(c: Client, tmp: str, ctx: dict):
     notes = await c("list_notes", track=t, part=0)
     ok(all(n["phoneme"] for n in notes), "every note has a phoneme after loading", notes)
     ok(notes[1]["phoneme"] == "n a" and notes[1]["protected"], "protected phoneme kept", notes[1])
-    ok(notes[2]["vibrato"]["type"] == 1, "vibrato kept", notes[2])
+    vib = ({"type": 0, "duration": 400, "depth": 127, "rate": 60} if "ai" in ctx["tracks"]  # AI vibrato has no type
+           else {"type": 1, "duration": 400, "depth": 70, "rate": 60})
+    ok(notes[2]["vibrato"] == vib, "vibrato kept", notes[2])
     ok(notes[3]["lyric"] == "-", f"continuation note sings {notes[3]['phoneme']!r}", notes[3])
     cv = await c("get_curve", track=t, part=0, curve="dynamics")
     ok(cv["points"] == [[0, 100], [960, 40]], "curve kept", cv)
@@ -363,16 +368,22 @@ def unit_tests():
     vpr.restore_tracks(seq, saved)
     ok([(t["isMuted"], t["isSoloMode"]) for t in seq["tracks"]] == [(False, True), (True, False), (False, False)],
        "restore_tracks puts mute/solo back", seq)
+    print("[guide and prompt helpers]")
+    from vocaloid6_mcp.server import FRONT_MATTER
+    from vocaloid6_mcp.ui import _asks_about
+    for src, want in {"---\nname: x\n---\n# T\n\n---\n\n## N\n": "# T\n\n---\n\n## N\n",
+                      "---\n---\n# T\nintro\n\n---\n\n## N\n": "# T\nintro\n\n---\n\n## N\n",
+                      "---\nname: x\n---": "", "# T\n---\n": "# T\n---\n"}.items():
+        ok(FRONT_MATTER.sub("", src, count=1) == want, "front matter stripped, later --- rules kept", src)
+    ok(_asks_about('Do you want to save "song"?', "song"), "unsaved prompt recognised by the quoted project name")
+    ok(not _asks_about("Yes No Cancel Replace the voice?", "No"), "a short project name does not match other questions")
 
 
 async def main():
     live = "--live" in sys.argv
     unit_tests()
     tmp = tempfile.mkdtemp(prefix="vocaloid6_mcp_test_")
-    exe = os.path.join(ROOT, ".venv", "Scripts", "vocaloid6-mcp.exe")
-    params = StdioServerParameters(command=exe if os.path.isfile(exe) else sys.executable,
-                                   args=[] if os.path.isfile(exe) else ["-m", "vocaloid6_mcp.server"],
-                                   env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    params = server_params()
     try:
         async with stdio_client(params) as (r, w), ClientSession(r, w) as s:
             await s.initialize()

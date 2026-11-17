@@ -1,12 +1,12 @@
 [project]
 name = "vocaloid6-mcp"
-version = "0.1.0"
-description = "MCP server that lets Claude operate VOCALOID6 and write VOCALOID3-6 projects (English / Japanese)"
+version = "0.4.0"
+description = "MCP server that lets AI assistants operate VOCALOID6 and write VOCALOID3-6 projects (English / Japanese)"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
-    "mcp>=1.9,<2",
+    "mcp>=1.10,<2",  # structured_output switch
     "psutil>=5.9",
     "pywinauto>=0.6.8; sys_platform == 'win32'",
 ]
@@ -24,3 +24,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vocaloid6_mcp"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"skill/SKILL.md" = "vocaloid6_mcp/SKILL.md"  # served by the usage_guide tool

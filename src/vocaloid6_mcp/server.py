@@ -2,11 +2,13 @@
 
 import functools
 import os
+import re
 
-from mcp.server.fastmcp import FastMCP
+import pydantic_core
+from .schema import FastMCP
 from pydantic import BaseModel, Field
 
-from . import app, live, music, ui, voicebanks, vpr, vsqx
+from . import __version__, app, live, music, ui, voicebanks, vpr, vsqx
 from . import lyrics as lyric_text
 from .errors import VocaloidError
 
@@ -28,6 +30,7 @@ Control VOCALOID6 and write VOCALOID3/4/5/6 projects, in English or Japanese.
 6. export_vsqx writes .vsqx for the VOCALOID3/4 editors (classic tracks only). VOCALOID2 is not supported.
 7. Live tools bring VOCALOID6 to the front while they open its menus, so keys the user types then go to VOCALOID6.
    Before using live tools, ask the user not to type or click until you are done; prefer path= edits otherwise.
+8. Before a song task, call usage_guide once for the full workflow and quality rules (skip it if the vocaloid6 skill is loaded).
 
 VOCALOID6 を操作し、VOCALOID3/4/5/6 のプロジェクトを英語・日本語で作成します。
 1. まず vocaloid_status を呼んでください。ライブ操作は Windows の UI オートメーションで VOCALOID6 エディターを操作します。
@@ -44,9 +47,11 @@ VOCALOID6 を操作し、VOCALOID3/4/5/6 のプロジェクトを英語・日本
 6. export_vsqx は VOCALOID3/4 用の .vsqx を書き出します（VOCALOID トラックのみ）。VOCALOID2 には対応していません。
 7. ライブ操作はメニューを開く間 VOCALOID6 を前面に出すため、そのときのユーザーの入力は VOCALOID6 に届きます。
    ライブ操作の前に、終わるまでキーボードやマウスに触れないようユーザーに伝えてください。難しければ path= で編集してください。
+8. 曲作りの前に usage_guide を一度呼び、手順と品質ルールの全文を読んでください（vocaloid6 スキルを読み込み済みなら不要）。
 """
 
 mcp = FastMCP("vocaloid6", instructions=INSTRUCTIONS, log_level="WARNING")
+mcp._mcp_server.version = __version__  # FastMCP would report the MCP SDK's version
 
 
 def _tool():
@@ -55,12 +60,14 @@ def _tool():
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             try:
-                return fn(*args, **kwargs)
+                r = fn(*args, **kwargs)
+                # one JSON text block: FastMCP would send a list as one block per item (none when empty)
+                return pydantic_core.to_json(r, fallback=str, indent=2).decode() if isinstance(r, list) else r
             except VocaloidError:
                 raise
             except Exception as e:  # noqa: BLE001 - surface anything else in both languages
                 raise VocaloidError(f"{type(e).__name__}: {e}", f"予期しないエラー {type(e).__name__}: {e}") from e
-        return mcp.tool()(wrapper)
+        return mcp.tool(structured_output=False)(wrapper)
     return deco
 
 
@@ -101,8 +108,8 @@ class NoteEdit(BaseModel):
         "(e.g. half the note) + depth + rate, no type; this is the audible long-note vibrato. "
         "/ 手動ビブラート。VOCALOID:AI トラックでは type なしで duration（例: 音符の半分）・depth・rate")
     ai_vibrato: bool | None = Field(None, description="AI auto-vibrato on/off (VOCALOID:AI tracks). / AI ビブラートの有効・無効")
-    ai_exp: dict[str, float] | None = Field(
-        None, description="VOCALOID:AI note settings 0..1 (0.5 = unchanged), e.g. {'amplitudeEnd': 0.3}. "
+    ai_exp: dict[str, float] | None = Field(  # keys listed as properties: Gemini rejects an object without any
+        None, json_schema_extra={"properties": {k: {"type": "number"} for k in vpr.AI_EXP_KEYS}}, description="VOCALOID:AI note settings 0..1 (0.5 = unchanged), e.g. {'amplitudeEnd': 0.3}. "
         "vibratoLeading/FollowingDepth only scale the AI's own auto-vibrato (little on short notes). Keys: "
         "vibratoLeadingDepth, vibratoFollowingDepth, amplitudeWhole/Start/End, pitchFine, pitchDriftStart/End, "
         "pitchScalingCenter/Origin, pitchTransitionStart/End. / AI 音符の設定 0〜1（0.5 = 変更なし）")
@@ -148,6 +155,32 @@ def vocaloid_status() -> dict:
     """Is VOCALOID6 running, which project is open, and what to do next. Call this first.
     / VOCALOID6 が起動しているか、開いているプロジェクト、次にすべきこと。最初に呼んでください。"""
     return app.status()
+_GUIDE_NOTE = ("\n\n---\nNote for agents without the skill: files this guide mentions next to it (voicebanks.md, "
+               "mix_stems.py, scripts/) live in the skill folder of the repository and are not part of this server. "
+               "Skip the steps that need them if they are not available.\n")
+
+
+FRONT_MATTER = re.compile(r"\A---[ \t]*\r?\n(?:.*?\r?\n)??---[ \t]*(?:\r?\n|\Z)", re.S)  # empty or at end of file too
+
+
+def _guide_text() -> str:
+    """skill/SKILL.md without its front matter (bundled next to this file in wheels and the single-file build)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for p in (os.path.join(here, "SKILL.md"), os.path.join(here, "..", "..", "skill", "SKILL.md")):
+        if os.path.isfile(p):
+            with open(p, encoding="utf-8") as f:
+                text = f.read()
+            return re.sub(FRONT_MATTER, "", text, count=1).lstrip() + _GUIDE_NOTE
+    raise VocaloidError("Usage guide not found", "使い方ガイドが見つかりません")
+
+
+@_tool()
+def usage_guide() -> str:
+    """Full workflow and quality rules for making good vocals with this server (same text as the Claude skill).
+    Read it once before a song task. / この MCP で良い歌声を作るための手順と品質ルールの全文（Claude 用スキルと同じ内容）。
+    曲作りの前に一度読んでください。"""
+    return _guide_text()
+
 
 
 @_tool()

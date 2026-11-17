@@ -11,6 +11,7 @@ import re
 
 from .errors import VocaloidError
 from .lyrics import LANG_NAMES
+from .winpaths import known_dir
 
 try:
     import winreg
@@ -21,8 +22,9 @@ _COMP_ID = re.compile(r"^[A-Z0-9]{16}$")
 _ROOTS = (("VOCALOID3", 3), ("VOCALOID4", 4), ("VOCALOID5", 5), ("VOCALOID6", 6))
 _LANG_WORDS = (("ENG", 1), ("ENGLISH", 1), ("KOR", 2), ("KOREAN", 2), ("ESP", 3), ("SPANISH", 3),
                ("CHN", 4), ("CHS", 4), ("CHINESE", 4), ("MANDARIN", 4))
-STYLE_DIRS = [os.path.join(os.environ.get(v, ""), "VOCALOID6", "StylePreset")
-              for v in ("CommonProgramFiles", "APPDATA")]
+_COMMON = known_dir("CommonProgramFiles", "CommonFilesDir", os.path.join("Program Files", "Common Files"))
+STYLE_DIRS = [os.path.join(_COMMON, "VOCALOID6", "StylePreset"),
+              os.path.join(os.environ.get("APPDATA", ""), "VOCALOID6", "StylePreset")]
 PREFS = os.path.join(os.environ.get("APPDATA", ""), "VOCALOID6", "Settings", "preferences_common.json")
 
 

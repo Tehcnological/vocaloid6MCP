@@ -8,18 +8,18 @@ import psutil
 
 from . import ui
 from .errors import VocaloidError
+from .winpaths import known_dir
 
 
 def find_exe() -> str | None:
     candidates = [os.environ.get("VOCALOID6_EXE")]
-    for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")):
-        if base:
-            candidates.append(os.path.join(base, "VOCALOID6", "Editor", "VOCALOID6.exe"))
+    for base in (known_dir("ProgramFiles", "ProgramFilesDir", "Program Files"),
+                 known_dir("ProgramFiles(x86)", "ProgramFilesDir (x86)", "Program Files (x86)")):
+        candidates.append(os.path.join(base, "VOCALOID6", "Editor", "VOCALOID6.exe"))
     return next((c for c in candidates if c and os.path.isfile(c)), None)
 
 
-def processes() -> list[psutil.Process]:
-    return [p for p in psutil.process_iter(["name"]) if (p.info.get("name") or "").lower() == "vocaloid6.exe"]
+processes = ui.processes  # one rule for finding VOCALOID6, shared with the window lookup
 
 
 def _window_info() -> dict:
@@ -47,6 +47,46 @@ def status() -> dict:
     return info
 
 
+_SPAWN_PS = """
+$a = @{CommandLine = $env:MCP_SPAWN_CMD; CurrentDirectory = $env:MCP_SPAWN_DIR}
+try { $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments $a -ErrorAction Stop } catch { exit 1 }
+if ($null -eq $r) { exit 1 }
+exit $r.ReturnValue
+"""
+
+
+def spawn(args: list[str], cwd: str) -> list[str]:
+    """Start the editor so it outlives this server. Some MCP clients (e.g. the official Python SDK on Windows) run
+    the server in a job object that kills every child process when the client disconnects, which would close the
+    editor with unsaved work; Windows creates a process started through WMI outside that job, with the user's full
+    environment (a child process would get only the client's trimmed one). Returns warnings for the caller."""
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _SPAWN_PS], capture_output=True,
+                           env={**os.environ, "MCP_SPAWN_CMD": subprocess.list2cmdline(args), "MCP_SPAWN_DIR": cwd},
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=20)
+        started = r.returncode == 0
+    except subprocess.TimeoutExpired:
+        started = None  # WMI may still be creating it: wait longer before trying another way
+    except OSError:
+        started = False
+    # a slow WMI call may still have started it: never start a second copy
+    for _ in range(10 if started else 30 if started is None else 5):
+        if processes():
+            return []
+        time.sleep(1)
+    subprocess.Popen(args, cwd=cwd, close_fds=True, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+    return ["Started as a child of this server: if the MCP client closes it, the editor may close too. "
+            "Save often. / このサーバーの子プロセスとして起動しました。MCP クライアントが終了すると"
+            "エディターも閉じることがあります。こまめに保存してください。"]
+
+
+def _with_warnings(e: VocaloidError, warnings: list[str]) -> VocaloidError:
+    """Append the start warnings (each English, then Japanese) after the whole bilingual error."""
+    if warnings:
+        e.args = (" | ".join([str(e)] + warnings),)
+    return e
+
+
 def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     if project_path:
         project_path = os.path.abspath(project_path)
@@ -60,17 +100,44 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     if not exe:
         raise VocaloidError("VOCALOID6.exe not found; set the VOCALOID6_EXE environment variable",
                             "VOCALOID6.exe が見つかりません。環境変数 VOCALOID6_EXE を設定してください")
-    subprocess.Popen([exe] + ([project_path] if project_path else []), cwd=os.path.dirname(exe), close_fds=True,
-                     creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+    warnings = spawn([exe] + ([project_path] if project_path else []), os.path.dirname(exe))
     deadline = time.time() + wait_seconds
-    while time.time() < deadline and not ui.run(lambda: ui.main_window(required=False) is not None):
+    # with a project, wait for the editor window, not a Home window shown while it loads
+    def ready():
+        from comtypes import COMError  # here, on the UI thread: importing comtypes sets up COM on the importing thread
+        try:
+            w = ui.main_window(required=False)
+            return w is not None and bool(not project_path or ui.is_editor(w) or ui._message_box(w))
+        except COMError:  # a window closed while it was read (VOCALOID6 is starting): ask again next second
+            return False
+    while time.time() < deadline and processes() and not ui.run(ready):
         time.sleep(1)
+    if not processes():
+        raise _with_warnings(ui.exited_error(), warnings)
     time.sleep(3)  # let the window finish building
     out = {"launched": True}
+    if warnings:
+        out["warnings"] = warnings
     if project_path:
         stem = os.path.splitext(os.path.basename(project_path))[0]
-        if ui.run(lambda: ui.project_name()) != stem:
-            out.update(ui.run(ui.open_project, project_path))
+
+        def finish():  # ui.run turns a vanished window (COM error) into an exit or a normal error
+            w = ui.main_window(required=False)
+            if w is None and not processes():
+                raise ui.exited_error()
+            if w is None:  # the process runs but shows no window yet: still starting, so never open twice
+                raise ui.still_loading_error()
+            w = ui.settle(w)  # the command-line load is done (or never started) after this
+            notes, w = ui.finish_load(w, project_path) if ui._message_box(w) else ([], w)
+            # not open now means it was not taken from the command line, so opening it cannot load it twice
+            return notes, (ui.open_project(project_path) if ui.project_name(w) != stem else {})
+        try:
+            notes, opened = ui.run(finish)
+            out.update(opened)
+        except VocaloidError as e:
+            raise _with_warnings(e, warnings)  # the start warnings matter even when the open fails
+        if notes:
+            out["dialogs"] = notes
     return {**out, **status()}
 
 
@@ -95,8 +162,16 @@ def close(force: bool = False) -> dict:
     if alive:
         if force:
             for p in alive:
-                p.kill()
-            return {"closed": True, "killed": [p.pid for p in alive]}
+                try:
+                    p.kill()
+                except psutil.Error:  # already gone, or not allowed: wait_procs below tells which
+                    pass
+            # a launch right after must not still see it
+            killed, stuck = psutil.wait_procs(alive, timeout=10)
+            if stuck:
+                return {"closed": False, "still_running": [p.pid for p in stuck],
+                        "hint": "VOCALOID6 could not be ended. / VOCALOID6 を終了できませんでした。"}
+            return {"closed": True, "killed": [p.pid for p in killed]}
         return {"closed": False, "still_running": [p.pid for p in alive],
                 "hint": "VOCALOID6 did not close (busy or showing a dialog). / VOCALOID6 が閉じませんでした（処理中かダイアログ表示中）。"}
     return {"closed": True, "pids": [p.pid for p in gone]}
