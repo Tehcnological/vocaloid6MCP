@@ -700,8 +700,10 @@ def export_wav(path: str, bypass_effects: bool = False, timeout: float = 600, bi
 
 
 def export_midi(path: str) -> dict:
-    w = main_window()
     path = os.path.abspath(path)
+    if not path.lower().endswith((".mid", ".midi")):  # checked before the delete below
+        raise VocaloidError("Output must be a .mid file", "出力ファイルは .mid にしてください")
+    w = main_window()
     if os.path.exists(path):
         os.remove(path)
     _menu_path(w, ["File", "Export MIDI..."])
