@@ -107,10 +107,9 @@ def launch(project_path: str | None = None, wait_seconds: float = 90) -> dict:
     if warnings:
         out["warnings"] = warnings
     if project_path:
-        def check_boxes():  # an error box: raise if the project did not open, else report it
+        def check_boxes():  # a box: raise if the project did not open (or VOCALOID6 asks something), else report it
             w = ui.main_window(required=False)
-            box = w and ui._message_box(w)
-            return ui.finish_load(w, project_path) if box and not ui.is_question(box) else []
+            return ui.finish_load(w, project_path) if w and ui._message_box(w) else []
         notes = ui.run(check_boxes)
         if notes:
             out["dialogs"] = notes

@@ -368,6 +368,15 @@ def unit_tests():
     vpr.restore_tracks(seq, saved)
     ok([(t["isMuted"], t["isSoloMode"]) for t in seq["tracks"]] == [(False, True), (True, False), (False, False)],
        "restore_tracks puts mute/solo back", seq)
+    print("[guide and prompt helpers]")
+    from vocaloid6_mcp.server import FRONT_MATTER
+    from vocaloid6_mcp.ui import _asks_about
+    for src, want in {"---\nname: x\n---\n# T\n\n---\n\n## N\n": "# T\n\n---\n\n## N\n",
+                      "---\n---\n# T\nintro\n\n---\n\n## N\n": "# T\nintro\n\n---\n\n## N\n",
+                      "---\nname: x\n---": "", "# T\n---\n": "# T\n---\n"}.items():
+        ok(FRONT_MATTER.sub("", src, count=1) == want, "front matter stripped, later --- rules kept", src)
+    ok(_asks_about('Do you want to save "song"?', "song"), "unsaved prompt recognised by the quoted project name")
+    ok(not _asks_about("Yes No Cancel Replace the voice?", "No"), "a short project name does not match other questions")
 
 
 async def main():
