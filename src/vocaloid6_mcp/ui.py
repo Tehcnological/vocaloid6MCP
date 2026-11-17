@@ -462,8 +462,14 @@ def _stuck_error(text: str) -> VocaloidError:
                          f"このサーバーで閉じられないボックスがあります: {text}。VOCALOID6 で閉じてください")
 
 
-def exited_error() -> VocaloidError:
-    """VOCALOID6 is gone (during a start, a load or any other tool)."""
+def exited_error(path: str | None = None) -> VocaloidError:
+    """VOCALOID6 is gone. With the project it was starting with or loading, that file is the likely cause, so the
+    message says so instead of suggesting a relaunch that would crash the same way."""
+    if path:
+        return VocaloidError(f"VOCALOID6 exited while starting with or loading {path}; the file may be the cause, so "
+                             "check it before launching again",
+                             f"{path} を開く途中で VOCALOID6 が終了しました。ファイルが原因の可能性があるため、"
+                             "起動し直す前に確認してください")
     return VocaloidError("VOCALOID6 exited; call launch_vocaloid to start it again",
                          "VOCALOID6 が終了しました。launch_vocaloid で起動し直してください")
 
@@ -473,7 +479,7 @@ def still_loading_error() -> VocaloidError:
                          "VOCALOID6 はまだ起動中か読み込み中です。少ししてから vocaloid_status を呼んでください")
 
 
-def settle(w):
+def settle(w, path: str | None = None):
     """Wait for a load to end: VOCALOID6 idle, then, when it loaded from the separate Home window, the editor that
     replaces it (may take a while once the Home window is gone; 10 s with it still up means nothing is loading).
     Returns the main window."""
@@ -487,7 +493,7 @@ def settle(w):
     _wait(lambda: gone() or is_editor(main_window(required=False)) or _message_box(w)
           or (_alive(w) and time.time() - start > 10), 120)
     if gone():
-        raise exited_error()
+        raise exited_error(path)
     w = main_window(required=False)
     if w is None:  # running, but the editor has not replaced the Home window yet
         raise still_loading_error()
@@ -563,7 +569,7 @@ def open_project(path: str, force: bool = False) -> dict:
                                 f"VOCALOID6 の表示: {_message(box)}。VOCALOID6 で閉じてから、もう一度試してください")
     _file_dialog(w, path)
     _wait(lambda: not any(_is_file_dialog(d) for d in dialogs(w)), 30)
-    w = settle(w)
+    w = settle(w, path)
     events = handle_dialogs(w, 3)
     notes, w = finish_load(w, path, force, before)
     events += notes + handle_dialogs(w, 2)
