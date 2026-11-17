@@ -123,7 +123,10 @@ def main_window(required: bool = True):
     """The editor window, else the separate Home window (on_home_screen() is then True)."""
     home = None
     for w in _vocaloid_windows():
-        aid = w.element_info.automation_id
+        try:
+            aid = w.element_info.automation_id
+        except Exception:  # noqa: BLE001 - a window that closed after it was listed (e.g. a splash at startup)
+            continue
         if aid == SELECTORS["main_window"]["auto_id"]:
             return w
         if aid == SELECTORS["home_window"]["auto_id"]:
@@ -530,7 +533,7 @@ def open_project(path: str, force: bool = False) -> dict:
     w = settle(w)
     events = handle_dialogs(w, 3)
     events += finish_load(w, path, force, before)
-    events += handle_dialogs(w, 2)
+    events += handle_dialogs(main_window(), 2)  # the editor may have replaced the Home window meanwhile
     return {"opened": path, "dialogs": events}
 
 
