@@ -6,12 +6,12 @@ separately) to sing it. Everything that cannot be carried over is reported in `d
 
 from collections.abc import Callable
 
-from . import voicebanks
+from . import voicebanks, vpr
+from .vpr import AUTO_POS, PLACEHOLDER
 
 LANG_PROP = "Language(0:Default/1:JPN/2:ENG/3:CHN)"
 PHONEME_PROP = "Phoneme"
 ENGINE = "VOCALOID6"
-PLACEHOLDER = "a"  # vpr.PLACEHOLDER: phoneme VOCALOID6 has not computed yet
 LANG_TO_PROP = {0: 1, 1: 2, 4: 3}  # VOCALOID language id -> TuneLab engine Language property
 EXPORT_CONFIG = {"exportPath": "", "fileName": "", "format": "wav", "sampleRate": 44100, "bitDepth": 16,
                  "bitrate": 320, "masterExportEnabled": True, "masterExportChannels": 2}
@@ -42,7 +42,6 @@ AI_EXP_TO_PROP = {"pitchTransitionStart": "Pitch Leading Transition", "pitchFine
                   "pitchTransitionEnd": "Pitch Following Transition", "pitchDriftStart": "Pitch Leading Drift",
                   "pitchDriftEnd": "Pitch Following Drift", "pitchScalingCenter": "Pitch Scaling Center",
                   "pitchScalingOrigin": "Pitch Scaling Origin"}
-AUTO_POS = -2147483648  # vpr.AUTO_POS: Timing-tool entry not moved
 
 
 # VOCALOID:AI manual vibrato, measured in VOCALOID6 6.13 (pitch tracked on renders): rate -> Hz is two parallel
@@ -144,7 +143,7 @@ def _note(n: dict, ttype: int) -> dict:
     if ttype == 2 and lang in LANG_TO_PROP:
         props[LANG_PROP] = LANG_TO_PROP[lang]
     phoneme = n.get("phoneme") or ""
-    placeholder = phoneme == PLACEHOLDER and n.get("lyric") not in ("a", "あ", "ア")
+    placeholder = phoneme == PLACEHOLDER and (lang != 0 or n.get("lyric") not in ("a", "あ", "ア"))
     if phoneme and not placeholder and (lang != 0 or n.get("isProtected")):
         props[PHONEME_PROP] = phoneme  # non-Japanese: keep VOCALOID6's pronunciation; Japanese: only user-locked
     return {"pos": float(n["pos"]), "dur": float(n["duration"]), "pitch": int(n["number"]), "lyric": n.get("lyric", ""),
@@ -162,10 +161,15 @@ def convert(seq: dict, tracks: list[int] | None = None,
         if n:
             counts[(ti, pi, what)] = counts.get((ti, pi, what), 0) + n
 
+    for i in tracks or []:
+        vpr._track(seq, i)  # a wrong index is an error, not an empty file
     mt = seq.get("masterTrack", {})
+    tempo = mt.get("tempo", {})
+    glob = tempo.get("global") or {}
+    tempo_events = [{"pos": 0, "value": glob["value"]}] if glob.get("isEnabled") else tempo.get("events", [])
     doc = {
         "version": 1,
-        "tempos": [{"pos": float(e["pos"]), "bpm": e["value"] / 100} for e in mt.get("tempo", {}).get("events", [])],
+        "tempos": [{"pos": float(e["pos"]), "bpm": e["value"] / 100} for e in tempo_events],
         "timeSignatures": [{"barIndex": e["bar"], "numerator": e["numer"], "denominator": e["denom"]}
                            for e in mt.get("timeSig", {}).get("events", [])],
         "tracks": [],
@@ -230,4 +234,4 @@ def convert(seq: dict, tracks: list[int] | None = None,
             "exportChannels": 1, "parts": out_parts,
         })
     dropped = [{"track": ti, "part": pi, "what": what, "count": n} for (ti, pi, what), n in counts.items()]
-    return doc, dropped, warnings
+    return doc, dropped, list(dict.fromkeys(warnings))  # a missing voicebank is reported per part: keep one per track

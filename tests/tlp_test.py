@@ -328,6 +328,50 @@ def test_engines_reports_other_failures_as_errors():
     ok("error" in r and "vocaloid6_engine" not in r, "a failing CLI is an error, not 'no extension'", r)
 
 
+def test_bad_track_index_rejected():
+    from vocaloid6_mcp.errors import VocaloidError
+    try:
+        convert(project(ai_track(), classic_track()), tracks=[9])
+        raised = False
+    except VocaloidError:
+        raised = True
+    ok(raised, "tracks=[9] on a two-track project is an error, not an empty file")
+
+
+def test_missing_bank_warns_once_per_track():
+    t = classic_track(comp="ZZZ")
+    t["parts"].append(dict(t["parts"][0], pos=1920))
+    _, _, warnings = convert(project(t))
+    ok(len([w for w in warnings if "ZZZ" in w]) == 1, "one missing-voicebank warning per track and voicebank", warnings)
+
+
+def test_english_placeholder_never_copied():
+    doc, _, _ = convert(project(ai_track([note(0, lyric="a", phoneme="a", lang=1)])))
+    ok(tlp.PHONEME_PROP not in first_part(doc)["notes"][0]["properties"], "English lyric 'a' with placeholder phoneme")
+
+
+def test_global_tempo():
+    seq = project(ai_track())
+    vpr.set_tempo(seq, 90, 3840)
+    seq["masterTrack"]["tempo"]["global"] = {"isEnabled": True, "value": 14000}
+    doc, _, _ = convert(seq)
+    ok(doc["tempos"] == [{"pos": 0.0, "bpm": 140.0}], "global tempo switch overrides the tempo track", doc["tempos"])
+
+
+def test_stderr_kept_out_of_json():
+    import tempfile
+    from vocaloid6_mcp import tunelab
+    cli = fake_cli(tempfile.mkdtemp(), "noisy", 'echo log {x} 1>&2& echo {"loaded": true, "total": 2, "sources": []}')
+    r = with_cli(cli, tunelab.engines)
+    ok(r == {"installed": True, "vocaloid6_engine": True, "voices": 2}, "a brace in a stderr log line does not break parsing", r)
+
+
+def test_probe_default_timeout_is_short():
+    import inspect
+    from vocaloid6_mcp import tunelab
+    ok(inspect.signature(tunelab.engines).parameters["timeout"].default <= 30, "self_check probe fits a 60 s client timeout")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
