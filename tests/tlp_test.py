@@ -223,6 +223,65 @@ def test_classic_vibrato_dropped():
     ok(any(d["what"] == "classic vibrato" for d in dropped), "classic vibrato reported", dropped)
 
 
+def fake_cli(tmp, name, body):
+    path = os.path.join(tmp, name + ".cmd")
+    with open(path, "w", encoding="ascii") as f:
+        f.write("@echo off\r\n" + body + "\r\n")
+    return path
+
+
+def with_cli(path, fn):
+    old = os.environ.get("TUNELAB_CLI")
+    os.environ["TUNELAB_CLI"] = path
+    try:
+        return fn()
+    finally:
+        if old is None:
+            os.environ.pop("TUNELAB_CLI")
+        else:
+            os.environ["TUNELAB_CLI"] = old
+
+
+def test_find_cli_env_override():
+    import tempfile
+    from vocaloid6_mcp import tunelab
+    tmp = tempfile.mkdtemp()
+    ok(with_cli(os.path.join(tmp, "missing.exe"), tunelab.find_cli) is None, "override to a missing file means not installed")
+    real = fake_cli(tmp, "cli", "exit /b 0")
+    ok(with_cli(real, tunelab.find_cli) == real, "override to an existing file is used")
+
+
+def test_status_not_installed():
+    from vocaloid6_mcp import tunelab
+    ok(with_cli(r"C:\nonexistent\TuneLab.Cli.exe", tunelab.status) == {"installed": False, "cli": None}, "status without TuneLab")
+
+
+def test_probe_timeout_reports_error():
+    import tempfile
+    import time
+    from vocaloid6_mcp import tunelab
+    slow = fake_cli(tempfile.mkdtemp(), "slow", f'"{sys.executable}" -c "import time; time.sleep(20)"')
+    t0 = time.time()
+    r = with_cli(slow, lambda: tunelab.engines(timeout=1))
+    ok(time.time() - t0 < 5 and r["installed"] is True and "error" in r, "a hung TuneLab is cut off and reported", r)
+
+
+def test_engines_without_extension():
+    import tempfile
+    from vocaloid6_mcp import tunelab
+    cli = fake_cli(tempfile.mkdtemp(), "noext", 'echo no engine with type id "VOCALOID6".& exit /b 1')
+    r = with_cli(cli, tunelab.engines)
+    ok(r["installed"] is True and r["vocaloid6_engine"] is False and r["voices"] == 0 and "hint" in r, "no voice extension", r)
+
+
+def test_engines_with_extension():
+    import tempfile
+    from vocaloid6_mcp import tunelab
+    cli = fake_cli(tempfile.mkdtemp(), "ext", 'echo {"mode": "sources", "engine": "VOCALOID6", "loaded": true, "total": 3, "sources": []}')
+    r = with_cli(cli, tunelab.engines)
+    ok(r == {"installed": True, "vocaloid6_engine": True, "voices": 3}, "engine and voice count", r)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

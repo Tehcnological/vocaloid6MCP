@@ -273,6 +273,8 @@ async def file_tests(c: Client, tmp: str) -> dict:
     err = await c.error("export_tunelab", output=path, path=path, overwrite=True)
     with open(path, "rb") as f:
         ok(".tlp" in err and f.read() == before, "export_tunelab never writes a non-.tlp file (project untouched)", err)
+    st = await c("vocaloid_status")
+    ok(set(st.get("tunelab", {})) == {"installed", "cli"} and "running" in st, "vocaloid_status reports TuneLab", st)
     return {"path": path, "tracks": tracks, "ai": ai, "classic": classic, "english": english}
 
 
@@ -305,6 +307,7 @@ async def live_tests(c: Client, tmp: str, ctx: dict):
     ok(r["opened"].lower() == path.lower(), "open_project", r)
     chk = await c("self_check")
     ok(chk["ok"], "self_check: every selector matches this VOCALOID6", chk)
+    ok("installed" in chk.get("tunelab", {}), "self_check reports TuneLab", chk.get("tunelab"))
 
     print("[live: VOCALOID6 fills in phonemes]")
     proj = await c("get_project")

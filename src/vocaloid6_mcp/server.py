@@ -9,7 +9,7 @@ import pydantic_core
 from .schema import FastMCP
 from pydantic import BaseModel, Field
 
-from . import __version__, app, live, music, tlp, ui, voicebanks, vpr, vsqx
+from . import __version__, app, live, music, tlp, tunelab, ui, voicebanks, vpr, vsqx
 from . import lyrics as lyric_text
 from .errors import VocaloidError
 
@@ -155,7 +155,7 @@ def _split(text: str, language: str) -> tuple[list[str], list[str], str]:
 def vocaloid_status() -> dict:
     """Is VOCALOID6 running, which project is open, and what to do next. Call this first.
     / VOCALOID6 が起動しているか、開いているプロジェクト、次にすべきこと。最初に呼んでください。"""
-    return app.status()
+    return {**app.status(), "tunelab": tunelab.status()}
 _GUIDE_NOTE = ("\n\n---\nNote for agents without the skill: files this guide mentions next to it (voicebanks.md, "
                "mix_stems.py, scripts/) live in the skill folder of the repository and are not part of this server. "
                "Skip the steps that need them if they are not available.\n")
@@ -205,7 +205,12 @@ def close_vocaloid(force: bool = False) -> dict:
 def self_check() -> dict:
     """Check that the menus and buttons the live tools use still exist in this VOCALOID6 version.
     / ライブ操作が使うメニューとボタンがこの VOCALOID6 にあるか確認します。"""
-    return ui.run(ui.self_check)
+    result = ui.run(ui.self_check)
+    try:
+        result["tunelab"] = tunelab.engines()
+    except Exception as e:  # noqa: BLE001 - optional extra: never fail the VOCALOID6 check because of TuneLab
+        result["tunelab"] = {"installed": tunelab.find_cli() is not None, "error": str(e)}
+    return result
 
 
 # ======================= project =======================
