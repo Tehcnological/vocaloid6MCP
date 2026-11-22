@@ -138,6 +138,53 @@ def test_tracks_filter():
     ok(len(doc["tracks"]) == 1 and first_part(doc)["voice"]["id"] == "C1|BBB", "only track 1 exported", doc["tracks"])
 
 
+def curves(**named):
+    return [{"name": k, "events": [{"pos": x, "value": y} for x, y in pts]} for k, pts in named.items()]
+
+
+def test_ai_curves():
+    t = ai_track(controllers=curves(dynamics=[(0, 64), (480, 127)], s5Expression=[(0, 100)], s5Air=[(0, -50)],
+                                    s5Character=[(0, 32)], pitchBend=[(0, 4096)], pitchBendSens=[(0, 12)]))
+    a = first_part(convert(project(t))[0])["automations"]
+    ok(a["Dynamics"]["values"] == [0, 0.0, 480, 63 / 64], "Dynamics scaled", a.get("Dynamics"))
+    ok([a[k]["values"][1] for k in ("Expression", "Air", "Gender", "PitchBend", "PitchBendSensitivity")] == [1.0, -0.5, -0.5, 0.5, 12],
+       "AI lanes scaled", a)
+    ok(all(a[k]["default"] == 0 for k in ("Dynamics", "Expression", "Air", "Gender", "PitchBend"))
+       and a["PitchBendSensitivity"]["default"] == 2, "lane defaults", a)
+
+
+def test_classic_curves():
+    t = classic_track(controllers=curves(brightness=[(0, 0)], breathiness=[(0, 64)], clearness=[(0, 64)], growl=[(0, 64)],
+                                         air=[(0, 64)], exciter=[(0, 32)], character=[(0, -64)], portamento=[(0, 10)],
+                                         xSynth=[(0, 10)]))
+    doc, dropped, _ = convert(project(t))
+    a = first_part(doc)["automations"]
+    got = {k: a[k]["values"][1] for k in ("Brightness", "Breathiness", "Clearness", "Growl", "Air", "Exciter", "Gender")}
+    ok(got == {"Brightness": -1.0, "Breathiness": 0.5, "Clearness": 0.5, "Growl": 0.5, "Air": 0.5, "Exciter": 0.5, "Gender": 1.0},
+       "classic lanes scaled", got)
+    whats = {d["what"] for d in dropped}
+    ok({"curve:portamento", "curve:xSynth"} <= whats, "unsupported curves reported", dropped)
+
+
+def test_style():
+    doc, _, _ = convert(project(ai_track(styleName="Soft Style"), ai_track()))
+    ok(first_part(doc)["properties"].get("Style") == "Soft Style", "style carried")
+    ok("Style" not in first_part(doc, 1)["properties"], "no style key without a style")
+
+
+def test_ai_note_settings():
+    base = {k: 0.5 for k in vpr.AI_EXP_KEYS}
+    n1 = note(0, aiExp={**base, "pitchFine": 0.8, "amplitudeEnd": 0.3, "vibratoLeadingDepth": 0.7},
+              isAiVibratoEnabled=False, phonemePositions=[{"pos": vpr.AUTO_POS}, {"pos": 120}])
+    doc, dropped, _ = convert(project(ai_track([n1]), ai_track([note(0, aiExp=dict(base))])))
+    p = first_part(doc)
+    ok(p["notes"][0]["properties"].get("Pitch Fine Tune") == 80, "pitchFine -> Pitch Fine Tune 80", p["notes"][0])
+    ok(p["properties"].get("Mode(PIT/PIT+/Snap)") == 0, "Mode PIT when pitch settings are used", p["properties"])
+    ok("Mode(PIT/PIT+/Snap)" not in first_part(doc, 1)["properties"], "no Mode when all settings are default")
+    whats = {d["what"] for d in dropped if d["track"] == 0}
+    ok({"ai_exp:amplitude", "ai_exp:vibrato depth", "ai vibrato off", "timing"} <= whats, "AI-only settings reported", dropped)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

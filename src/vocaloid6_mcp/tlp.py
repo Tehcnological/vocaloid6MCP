@@ -17,6 +17,66 @@ EXPORT_CONFIG = {"exportPath": "", "fileName": "", "format": "wav", "sampleRate"
                  "bitrate": 320, "masterExportEnabled": True, "masterExportChannels": 2}
 
 
+MODE_PROP = "Mode(PIT/PIT+/Snap)"
+STYLE_PROP = "Style"
+# vpr curve -> (TuneLab lane, controller value -> lane value, lane default). Lanes are [-1, 1] (or [0, 1]) like the
+# TuneLab engine's, PitchBendSensitivity stays in semitones.
+_SHARED = {
+    "dynamics": ("Dynamics", lambda v: (v - 64) / 64, 0),
+    "pitchBend": ("PitchBend", lambda v: v / 8192, 0),
+    "pitchBendSens": ("PitchBendSensitivity", lambda v: v, 2),
+}
+AI_CURVES_TLP = {**_SHARED,
+                 "s5Character": ("Gender", lambda v: v / -64, 0),
+                 "s5Expression": ("Expression", lambda v: (v - 50) / 50, 0),
+                 "s5Air": ("Air", lambda v: v / 100, 0)}
+CLASSIC_CURVES_TLP = {**_SHARED,
+                      "character": ("Gender", lambda v: v / -64, 0),
+                      "brightness": ("Brightness", lambda v: (v - 64) / 64, 0),
+                      "breathiness": ("Breathiness", lambda v: v / 128, 0),
+                      "clearness": ("Clearness", lambda v: v / 128, 0),
+                      "growl": ("Growl", lambda v: v / 128, 0),
+                      "air": ("Air", lambda v: v / 128, 0),
+                      "exciter": ("Exciter", lambda v: v / 64, 0)}
+AI_EXP_TO_PROP = {"pitchTransitionStart": "Pitch Leading Transition", "pitchFine": "Pitch Fine Tune",
+                  "pitchTransitionEnd": "Pitch Following Transition", "pitchDriftStart": "Pitch Leading Drift",
+                  "pitchDriftEnd": "Pitch Following Drift", "pitchScalingCenter": "Pitch Scaling Center",
+                  "pitchScalingOrigin": "Pitch Scaling Origin"}
+AUTO_POS = -2147483648  # vpr.AUTO_POS: Timing-tool entry not moved
+
+
+def _automations(part: dict, ttype: int, drop) -> dict:
+    table = AI_CURVES_TLP if ttype == 2 else CLASSIC_CURVES_TLP
+    out = {}
+    for c in part.get("controllers", []):
+        events = sorted(c.get("events") or [], key=lambda e: e["pos"])
+        if not events:
+            continue
+        if c.get("name") not in table:
+            drop(f"curve:{c.get('name')}")
+            continue
+        lane, scale, default = table[c["name"]]
+        out[lane] = {"default": default, "values": [x for e in events for x in (e["pos"], scale(e["value"]))]}
+    return out
+
+
+def _ai_settings(n: dict, props: dict, drop) -> bool:
+    """Copy VOCALOID:AI pitch settings to note properties; report the rest. True if a pitch setting was set."""
+    exp = n.get("aiExp") or {}
+    for key, prop in AI_EXP_TO_PROP.items():
+        if exp.get(key, 0.5) != 0.5:
+            props[prop] = round(exp[key] * 100)
+    if any(exp.get(k, 0.5) != 0.5 for k in ("amplitudeWhole", "amplitudeStart", "amplitudeEnd")):
+        drop("ai_exp:amplitude")
+    if any(exp.get(k, 0.5) != 0.5 for k in ("vibratoLeadingDepth", "vibratoFollowingDepth")):
+        drop("ai_exp:vibrato depth")
+    if n.get("isAiVibratoEnabled") is False:
+        drop("ai vibrato off")
+    if any(x.get("pos") != AUTO_POS for x in n.get("phonemePositions") or []):
+        drop("timing")
+    return any(p in props for p in AI_EXP_TO_PROP.values())
+
+
 def _default_bank_lookup(comp_id: str) -> dict | None:
     return next((b for b in voicebanks.list_voicebanks() if b["comp_id"] == comp_id), None)
 
@@ -86,11 +146,26 @@ def convert(seq: dict, tracks: list[int] | None = None,
             notes = p.get("notes", [])
             drop(ti, pi, "velocity", sum(1 for n in notes if n.get("velocity", 64) != 64))
             langs_seen.update(n.get("langID", 0) for n in notes)
+
+            def part_drop(what, ti=ti, pi=pi):
+                drop(ti, pi, what)
+
+            out_notes, uses_pitch_settings = [], False
+            for n in notes:
+                tn = _note(n, ttype)
+                if ttype == 2:
+                    uses_pitch_settings |= _ai_settings(n, tn["properties"], part_drop)
+                out_notes.append(tn)
+            props = {}
+            if ttype == 2 and p.get("styleName"):
+                props[STYLE_PROP] = p["styleName"]
+            if uses_pitch_settings:
+                props[MODE_PROP] = 0  # the engine reads the per-note pitch settings only outside Snap mode
             out_parts.append({
                 "name": p.get("name", ""), "pos": float(p.get("pos", 0)), "startOffset": 0.0,
                 "endOffset": float(p.get("duration", 0)), "type": "midi", "gain": 0.0,
-                "voice": _voice(p, ttype, bank_lookup, warnings, ti), "properties": {},
-                "notes": [_note(n, ttype) for n in notes], "automations": {}, "pitch": [], "vibratos": [],
+                "voice": _voice(p, ttype, bank_lookup, warnings, ti), "properties": props,
+                "notes": out_notes, "automations": _automations(p, ttype, part_drop), "pitch": [], "vibratos": [],
             })
         if ttype == 2 and langs_seen & {2, 3}:
             warnings.append(f"Track {ti}: Korean/Spanish lyrics on a VOCALOID:AI voice cannot be sung through TuneLab; "
