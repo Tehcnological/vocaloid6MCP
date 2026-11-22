@@ -19,6 +19,9 @@ Claude users can install [skill/](skill/) as a skill instead; the content is the
   - Live tools bring VOCALOID6 to the front: ask the user not to type or click until they finish, or use `path=`.
 - The song scripts in `skill/scripts/` (backing-track analysis, stem mix) are separate Python tools, not server
   tools; see the README.
+- TuneLab is optional (`export_tunelab`, skill section 7). It needs a VOCALOID6 voice extension for TuneLab that is
+  not publicly available; the user may need to source or make their own. Do not suggest where to get one or ask the
+  user where to; without one, stay on the VOCALOID6 workflow, which is unchanged.
 
 ## Working on this repository
 

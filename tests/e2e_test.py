@@ -11,7 +11,9 @@ after file tests too.
 import asyncio
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -275,6 +277,17 @@ async def file_tests(c: Client, tmp: str) -> dict:
         ok(".tlp" in err and f.read() == before, "export_tunelab never writes a non-.tlp file (project untouched)", err)
     st = await c("vocaloid_status")
     ok(set(st.get("tunelab", {})) == {"installed", "cli"} and "running" in st, "vocaloid_status reports TuneLab", st)
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    from vocaloid6_mcp import tunelab
+    cli = tunelab.find_cli()
+    if cli is None:
+        print("  skip  TuneLab not installed")
+    else:  # read-only: a headless TuneLab opens the file and summarises it
+        res = subprocess.run([cli, "--headless", "--project", out, "project", "status"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=180)
+        counts = [int(x) for x in re.findall(r"notes=(\d+)", res.stdout)]
+        ok(res.returncode == 0 and sum(counts) == midi_notes, "TuneLab opens the .tlp with every note",
+           (res.returncode, res.stdout[-400:]))
     return {"path": path, "tracks": tracks, "ai": ai, "classic": classic, "english": english}
 
 

@@ -143,3 +143,34 @@ Setup once (a separate Python, not part of the MCP server):
 - Live tools say a menu or button is missing: run `self_check` (a VOCALOID6 update may have renamed it) and fall
   back to file edits with `path=` plus `reload_project`.
 - "voice banks replaced" in a result: VOCALOID6 swapped a singer it does not have; check `get_project` voices.
+
+## 7. TuneLab (optional) / TuneLab（任意）
+
+Skip this section unless the user wants TuneLab. Everything above works without it.
+
+**Availability.** TuneLab sings VOCALOID voices only with a VOCALOID6 voice extension for TuneLab, installed
+separately. There is no public source for one: the user may need to source or make their own. Do not suggest where
+to get one, and do not ask the user where to get one. Check with `vocaloid_status` (`tunelab.installed`) and
+`self_check` (`tunelab.vocaloid6_engine`, `tunelab.voices`). If either is missing, stay on the VOCALOID6 workflow.
+/ TuneLab で VOCALOID の声を使うには別途 TuneLab 用の VOCALOID6 音声拡張が必要です（公開されている入手先はなく、
+ユーザーが用意する必要があるかもしれません）。入手先を案内したり尋ねたりせず、ない場合は VOCALOID6 だけで作業します。
+
+**Which program does what.** VOCALOID6: drafting (sections 1 to 4), the Timing tool, style EQ/compressor, Korean and
+Spanish on AI voices, `.vsqx`. TuneLab: pitch tuning, vibrato, expression/air/character curves and styles, in English
+and Japanese on every voice. Chinese on AI voices works for some voices only: check the render.
+
+**Handoff (one-way).**
+1. Draft in VOCALOID6, then `export_tunelab(output="....tlp", path=...)`. Read `dropped` and `warnings` and tell the
+   user what did not carry over. Never re-export over a `.tlp` that has been tuned: export later tracks with
+   `tracks=[...]` to a new file and import them in TuneLab.
+2. With the user's OK, open the `.tlp` in TuneLab and edit it through TuneLab's own command line or MCP server
+   (`TuneLab.Cli.exe`). Run its `--help` and `docs script-api` at the start of each session instead of relying on
+   memory: its commands change between versions.
+
+**Tuning rules in TuneLab.** Use TuneLab vibrato objects for vibrato. The per-note pitch settings take effect only
+when the part's `Mode(PIT/PIT+/Snap)` is not 2. Voice ids differ per voice; read them with TuneLab's `source list`.
+
+**Checking.** Export a `.tlp` copy, render it with a headless TuneLab into a temporary folder, and analyse it with
+the song-analysis scripts (section 5b). Never render, export audio from or save the user's open TuneLab session
+unless asked. Final mix: per-track stems from TuneLab and VOCALOID6 plus the backing, mixed with
+`skill/scripts/mix.py`.

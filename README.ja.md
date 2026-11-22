@@ -227,6 +227,14 @@ AI アシスタントにこう頼めます。
 `list_voicebanks` はレジストリ（`HKLM\SOFTWARE\VOCALOID3..6`）を読みます。AI 音源は対応言語を返し、旧世代の音源の言語は
 音源名から推定します（`language_source: "name"`）。
 
+### TuneLab（任意）
+
+`export_tunelab` はプロジェクトを [TuneLab](https://github.com/LiuYunPlayer/TuneLab) のプロジェクト（`.tlp`）に書き出し、
+TuneLab で調声できるようにします（音符・歌詞・発音記号・歌手・カーブ・スタイル・ビブラート。持ち越せないものは一覧で
+報告）。TuneLab で VOCALOID の声を使うには別途 TuneLab 用の VOCALOID6 音声拡張が必要です。公開されている入手先はないため、
+自分で用意する必要があるかもしれません。なくても他のツールは今まで通り動きます。`vocaloid_status` と `self_check` が
+TuneLab の状態を報告します。
+
 ### ツール一覧
 
 - **アプリ**：`vocaloid_status`、`launch_vocaloid`、`close_vocaloid`、`self_check`
@@ -237,7 +245,7 @@ AI アシスタントにこう頼めます。
 - **音符・歌詞**：`list_notes`、`add_notes`、`edit_notes`（手動ビブラート、AI 音符の設定、タイミングツール `timing` = 各音素の開始と音の終わり、音符の先頭からのティック）、`delete_notes`、`assign_lyrics`、`add_melody`（例 `A4:1 A4:1 B4:2 r:1`）
 - **カーブ**：`set_curve`、`get_curve`、`clear_curve`
 - **再生・書き出し**：`play`、`stop`、`export_wav`（`tracks=[...]` でそのトラックだけのステムを書き出し、ミュート・ソロは後で元に戻ります。`bit_depth=24` でビット深度を指定）、
-  `export_midi`、`import_midi`、`export_vsqx`
+  `export_midi`、`import_midi`、`export_vsqx`、`export_tunelab`
 - **ユーティリティ**：`note_to_midi`、`midi_to_note`、`beats_to_ticks`、`ticks_to_beats`、`split_lyrics`
 
 ## 安全性
@@ -255,7 +263,11 @@ uv pip install -e ".[kanji,test]"
 .venv\Scripts\python tests\e2e_test.py          # ファイル・音源・VSQX・ユーティリティのツール（stdio 経由）
 .venv\Scripts\python tests\e2e_test.py --live   # 起動中の VOCALOID6 も操作（音源が必要）
 .venv\Scripts\python tests\schema_check.py      # 全ツールのスキーマを厳しいクライアントの規則で検査
+.venv\Scripts\python tests\tlp_test.py          # TuneLab 書き出しと検出（TuneLab 不要）
 ```
+
+TuneLab がインストールされていれば、`e2e_test.py` は書き出した `.tlp` をヘッドレスの TuneLab が開けることも確認します。
+`TUNELAB_CLI` に存在しないパスを設定すると、TuneLab がない状態としてテストできます。
 
 `schema_check.py` はツール一覧を取得する普通の MCP クライアントで、各入力スキーマを Gemini・Codex・VS Code・Cursor の
 最も厳しい規則で検査します（規則はファイル冒頭に記載）。`MCP_SERVER_EXE=dist\vocaloid6-mcp.exe` を設定すると `e2e_test.py` を

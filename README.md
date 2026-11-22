@@ -228,6 +228,14 @@ English pitfalls VOCALOID6 shows: a word of several syllables on one note (`hell
 `list_voicebanks` reads the registry (`HKLM\SOFTWARE\VOCALOID3..6`). AI banks report their languages; for classic
 banks the language is guessed from the bank name (`language_source: "name"`).
 
+### TuneLab (optional)
+
+`export_tunelab` copies a project to a [TuneLab](https://github.com/LiuYunPlayer/TuneLab) project (`.tlp`) for
+tuning there: notes, lyrics, phonemes, voices, curves, styles and vibrato, with a report of anything left behind.
+TuneLab sings VOCALOID voices only with a VOCALOID6 voice extension for TuneLab, installed separately; none is
+publicly available, so you may need to source or make your own. Without one, nothing changes: every other tool
+works as before. `vocaloid_status` and `self_check` report what TuneLab has.
+
 ### Tool groups
 
 - **App**: `vocaloid_status`, `launch_vocaloid`, `close_vocaloid`, `self_check`
@@ -242,7 +250,8 @@ banks the language is guessed from the bank name (`language_source: "name"`).
   expression, air, character; classic tracks: dynamics, pitchBend, pitchBendSens, breathiness, brightness, clearness,
   portamento, growl, xSynth, character, air, exciter)
 - **Playback / export**: `play`, `stop`, `export_wav` (`tracks=[...]` renders stems: only those tracks, mute/solo
-  restored afterwards; `bit_depth=24` picks the mixdown bit depth), `export_midi`, `import_midi`, `export_vsqx`
+  restored afterwards; `bit_depth=24` picks the mixdown bit depth), `export_midi`, `import_midi`, `export_vsqx`,
+  `export_tunelab`
 - **Utilities**: `note_to_midi`, `midi_to_note`, `beats_to_ticks`, `ticks_to_beats`, `split_lyrics`
 
 ## Safety
@@ -260,7 +269,11 @@ uv pip install -e ".[kanji,test]"
 .venv\Scripts\python tests\e2e_test.py          # file, voicebank, VSQX and utility tools over stdio
 .venv\Scripts\python tests\e2e_test.py --live   # also drives the running VOCALOID6 (needs a voicebank)
 .venv\Scripts\python tests\schema_check.py      # every tool schema against strict client rules
+.venv\Scripts\python tests\tlp_test.py          # TuneLab export and detection (no TuneLab needed)
 ```
+
+When TuneLab is installed, `e2e_test.py` also checks that a headless TuneLab opens the exported `.tlp`; set
+`TUNELAB_CLI` to a missing path to test as if TuneLab were absent.
 
 `schema_check.py` is a plain MCP client that lists the tools and checks each input schema against the strictest
 documented rules of Gemini, Codex, VS Code and Cursor (rules listed at the top of the file). Set
