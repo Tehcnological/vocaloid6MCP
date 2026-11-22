@@ -185,6 +185,44 @@ def test_ai_note_settings():
     ok({"ai_exp:amplitude", "ai_exp:vibrato depth", "ai vibrato off", "timing"} <= whats, "AI-only settings reported", dropped)
 
 
+def test_rate_table():
+    hz = tlp.rate_to_hz
+    ok(hz(48) == 6.13 and hz(64) == 4.82 and hz(127) == 9.6, "table points", (hz(48), hz(64), hz(127)))
+    ok(abs(hz(52) - 6.37) < 0.01, "interpolated inside segment A", hz(52))
+    ok(hz(0) == hz(8) == 3.02, "rate 0 treated as 8", hz(0))
+    ok(hz(60) == 6.61, "clamped at the end of segment A", hz(60))
+
+
+def test_depth():
+    ok(tlp.depth_to_semitones(123) == 1.0, "depth 123 = 1 semitone")
+    ok(abs(tlp.depth_to_semitones(64) - 0.52) < 0.005, "depth 64 ~ 0.52 semitone", tlp.depth_to_semitones(64))
+
+
+def vib(duration=960, depth=64, rate=48, type_=0):
+    return {"type": type_, "duration": duration, "depths": [{"pos": 0, "value": depth}], "rates": [{"pos": 0, "value": rate}]}
+
+
+def test_ai_vibrato_object():
+    doc, _, _ = convert(project(ai_track([note(960, 1920, vibrato=vib())])))
+    v = first_part(doc)["vibratos"]
+    ok(len(v) == 1, "one vibrato", v)
+    v = v[0]
+    ok(v["pos"] == 1920.0 and v["dur"] == 960.0 and v["frequency"] == 6.13 and abs(v["amplitude"] - 0.52) < 0.005
+       and v["phase"] == 0.0, "vibrato placement and shape", v)
+    ok(v["attack"] == 0.12 and v["release"] == 0.02, "attack/release in seconds", v)
+
+
+def test_no_vibrato_when_zero():
+    doc, _, _ = convert(project(ai_track([note(0, 1920, vibrato=vib(duration=0)), note(1920, 1920, vibrato=vib(depth=0))])))
+    ok(first_part(doc)["vibratos"] == [], "no vibrato for zero duration or depth")
+
+
+def test_classic_vibrato_dropped():
+    doc, dropped, _ = convert(project(classic_track([note(0, 1920, vibrato=vib(type_=1))])))
+    ok(first_part(doc)["vibratos"] == [], "classic vibrato not converted")
+    ok(any(d["what"] == "classic vibrato" for d in dropped), "classic vibrato reported", dropped)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

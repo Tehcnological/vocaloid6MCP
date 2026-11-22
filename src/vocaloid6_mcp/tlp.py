@@ -45,6 +45,38 @@ AI_EXP_TO_PROP = {"pitchTransitionStart": "Pitch Leading Transition", "pitchFine
 AUTO_POS = -2147483648  # vpr.AUTO_POS: Timing-tool entry not moved
 
 
+# VOCALOID:AI manual vibrato, measured in VOCALOID6 6.13 (pitch tracked on renders): rate -> Hz is two parallel
+# segments with a drop at 64; amplitude is depth / 123 semitones.
+_RATE_A = [(8, 3.02), (24, 4.27), (32, 4.82), (40, 5.37), (48, 6.13), (56, 6.61)]
+_RATE_B = [(64, 4.82), (72, 5.54), (80, 6.12), (96, 7.49), (104, 8.20), (112, 8.6), (120, 9.00), (127, 9.6)]
+VIBRATO_ATTACK = 0.12  # seconds (TuneLab vibrato attack/release are seconds)
+VIBRATO_RELEASE = 0.02  # not 0: TuneLab divides by it at the vibrato's last sample
+
+
+def rate_to_hz(rate: int) -> float:
+    table = _RATE_B if rate >= 64 else _RATE_A
+    rate = max(table[0][0], min(table[-1][0], rate))
+    for (r0, h0), (r1, h1) in zip(table, table[1:]):
+        if r0 <= rate <= r1:
+            return round(h0 + (h1 - h0) * (rate - r0) / (r1 - r0), 4)
+    return table[0][1]
+
+
+def depth_to_semitones(depth: int) -> float:
+    return depth / 123
+
+
+def _vibrato(n: dict) -> dict | None:
+    vib = n.get("vibrato") or {}
+    dur = min(int(vib.get("duration") or 0), int(n["duration"]))
+    depth = (vib.get("depths") or [{"value": 0}])[0]["value"]
+    if dur <= 0 or depth <= 0:
+        return None
+    rate = (vib.get("rates") or [{"value": 64}])[0]["value"]
+    return {"pos": float(n["pos"] + n["duration"] - dur), "dur": float(dur), "frequency": rate_to_hz(rate),
+            "amplitude": depth_to_semitones(depth), "phase": 0.0, "attack": VIBRATO_ATTACK, "release": VIBRATO_RELEASE}
+
+
 def _automations(part: dict, ttype: int, drop) -> dict:
     table = AI_CURVES_TLP if ttype == 2 else CLASSIC_CURVES_TLP
     out = {}
@@ -150,11 +182,16 @@ def convert(seq: dict, tracks: list[int] | None = None,
             def part_drop(what, ti=ti, pi=pi):
                 drop(ti, pi, what)
 
-            out_notes, uses_pitch_settings = [], False
+            out_notes, vibratos, uses_pitch_settings = [], [], False
             for n in notes:
                 tn = _note(n, ttype)
                 if ttype == 2:
                     uses_pitch_settings |= _ai_settings(n, tn["properties"], part_drop)
+                    v = _vibrato(n)
+                    if v:
+                        vibratos.append(v)
+                elif _vibrato(n):
+                    part_drop("classic vibrato")  # VOCALOID6 renders it flat, so there is nothing to match
                 out_notes.append(tn)
             props = {}
             if ttype == 2 and p.get("styleName"):
@@ -165,7 +202,7 @@ def convert(seq: dict, tracks: list[int] | None = None,
                 "name": p.get("name", ""), "pos": float(p.get("pos", 0)), "startOffset": 0.0,
                 "endOffset": float(p.get("duration", 0)), "type": "midi", "gain": 0.0,
                 "voice": _voice(p, ttype, bank_lookup, warnings, ti), "properties": props,
-                "notes": out_notes, "automations": _automations(p, ttype, part_drop), "pitch": [], "vibratos": [],
+                "notes": out_notes, "automations": _automations(p, ttype, part_drop), "pitch": [], "vibratos": vibratos,
             })
         if ttype == 2 and langs_seen & {2, 3}:
             warnings.append(f"Track {ti}: Korean/Spanish lyrics on a VOCALOID:AI voice cannot be sung through TuneLab; "
