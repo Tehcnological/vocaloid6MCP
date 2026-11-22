@@ -1,6 +1,7 @@
 """VOCALOID6 MCP server (stdio). Every tool description and error is English, then Japanese."""
 
 import functools
+import json
 import os
 import re
 
@@ -8,7 +9,7 @@ import pydantic_core
 from .schema import FastMCP
 from pydantic import BaseModel, Field
 
-from . import __version__, app, live, music, ui, voicebanks, vpr, vsqx
+from . import __version__, app, live, music, tlp, ui, voicebanks, vpr, vsqx
 from . import lyrics as lyric_text
 from .errors import VocaloidError
 
@@ -538,6 +539,30 @@ def export_vsqx(output: str, version: int = 4, path: str | None = None, overwrit
     with open(output, "wb") as f:
         f.write(data)
     return {"vsqx": output, "version": version, "warnings": warnings}
+
+
+@_tool()
+def export_tunelab(output: str, path: str | None = None, tracks: list[int] | None = None, overwrite: bool = False) -> dict:
+    """Copy the project to a TuneLab project (.tlp) for tuning in TuneLab. One-way: tune and finish there, do not
+    re-export over a tuned file (add later tracks with tracks=[...] to a new file and import them in TuneLab).
+    TuneLab sings it only with a VOCALOID6 voice extension for TuneLab, installed separately. Carries notes, lyrics,
+    phonemes, languages, voices, dynamics/pitch/expression/air/character curves, styles and vibrato; `dropped` and
+    `warnings` list everything else. / プロジェクトを TuneLab プロジェクト（.tlp）に書き出します（TuneLab で調声するため、
+    一方向）。調声済みのファイルに上書きしないでください。TuneLab で歌わせるには別途 TuneLab 用の VOCALOID6 音声拡張が
+    必要です。持ち越せないものは dropped と warnings に出ます。"""
+    output = os.path.abspath(output)
+    if not output.lower().endswith(".tlp"):  # never write over a .vpr or any other kind of file
+        raise VocaloidError("Output must be a .tlp file", "出力ファイルは .tlp にしてください")
+    if os.path.exists(output) and not overwrite:
+        raise VocaloidError(f"{output} exists; pass overwrite=true to replace it", f"{output} は既に存在します。置き換えるなら overwrite=true")
+    seq = vpr.load(path) if path else ui.run(live.read, lambda s: s)[0]
+    doc, dropped, warnings = tlp.convert(seq, tracks)
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    with open(output, "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False)
+    parts = [p for t in doc["tracks"] for p in t["parts"]]
+    return {"tlp": output, "tracks": len(doc["tracks"]), "parts": len(parts), "notes": sum(len(p["notes"]) for p in parts),
+            "dropped": dropped, "warnings": warnings}
 
 
 # ======================= utilities =======================

@@ -255,6 +255,24 @@ async def file_tests(c: Client, tmp: str) -> dict:
                 ok(check[0], f"v{ver} matches Yamaha's vsq{ver}.xsd", check[1])
     else:
         print("  --  no classic voicebank: VSQX export skipped")
+
+    print("[tunelab]")
+    out = os.path.join(tmp, "test.tlp")
+    r = await c("export_tunelab", output=out, path=path)
+    with open(out, encoding="utf-8") as f:
+        doc = json.load(f)
+    proj = await c("get_project", path=path)
+    midi_notes = sum(p["note_count"] for t in proj["tracks"] if t["type"] != "audio" for p in t["parts"])
+    ok(doc["version"] == 1 and r["notes"] == midi_notes, "export_tunelab writes every note", r)
+    ok(sum(len(p["notes"]) for t in doc["tracks"] for p in t["parts"]) == midi_notes, ".tlp holds every note")
+    ok("overwrite" in await c.error("export_tunelab", output=out, path=path), "export_tunelab refuses to overwrite")
+    r = await c("export_tunelab", output=out, path=path, overwrite=True)
+    ok(r["notes"] == midi_notes, "export_tunelab overwrite=true replaces the file")
+    with open(path, "rb") as f:
+        before = f.read()
+    err = await c.error("export_tunelab", output=path, path=path, overwrite=True)
+    with open(path, "rb") as f:
+        ok(".tlp" in err and f.read() == before, "export_tunelab never writes a non-.tlp file (project untouched)", err)
     return {"path": path, "tracks": tracks, "ai": ai, "classic": classic, "english": english}
 
 
