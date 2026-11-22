@@ -164,12 +164,10 @@ def convert(seq: dict, tracks: list[int] | None = None,
     for i in tracks or []:
         vpr._track(seq, i)  # a wrong index is an error, not an empty file
     mt = seq.get("masterTrack", {})
-    tempo = mt.get("tempo", {})
-    glob = tempo.get("global") or {}
-    tempo_events = [{"pos": 0, "value": glob["value"]}] if glob.get("isEnabled") else tempo.get("events", [])
+    # VOCALOID6 6.13 plays the tempo events and ignores tempo.global, even with isEnabled true (checked by ear)
     doc = {
         "version": 1,
-        "tempos": [{"pos": float(e["pos"]), "bpm": e["value"] / 100} for e in tempo_events],
+        "tempos": [{"pos": float(e["pos"]), "bpm": e["value"] / 100} for e in mt.get("tempo", {}).get("events", [])],
         "timeSignatures": [{"barIndex": e["bar"], "numerator": e["numer"], "denominator": e["denom"]}
                            for e in mt.get("timeSig", {}).get("events", [])],
         "tracks": [],

@@ -350,12 +350,13 @@ def test_english_placeholder_never_copied():
     ok(tlp.PHONEME_PROP not in first_part(doc)["notes"][0]["properties"], "English lyric 'a' with placeholder phoneme")
 
 
-def test_global_tempo():
+def test_global_tempo_ignored_like_vocaloid6():
     seq = project(ai_track())
     vpr.set_tempo(seq, 90, 3840)
     seq["masterTrack"]["tempo"]["global"] = {"isEnabled": True, "value": 14000}
     doc, _, _ = convert(seq)
-    ok(doc["tempos"] == [{"pos": 0.0, "bpm": 140.0}], "global tempo switch overrides the tempo track", doc["tempos"])
+    ok(doc["tempos"] == [{"pos": 0.0, "bpm": 120.0}, {"pos": 3840.0, "bpm": 90.0}],
+       "tempo events are used even with tempo.global enabled, as VOCALOID6 plays them", doc["tempos"])
 
 
 def test_stderr_kept_out_of_json():
