@@ -552,9 +552,11 @@ def export_tunelab(output: str, path: str | None = None, tracks: list[int] | Non
     re-export over a tuned file (add later tracks with tracks=[...] to a new file and import them in TuneLab).
     TuneLab sings it only with a VOCALOID6 voice extension for TuneLab, installed separately. Carries notes, lyrics,
     phonemes, languages, voices, dynamics/pitch/expression/air/character curves, styles and vibrato; `dropped` and
-    `warnings` list everything else. / プロジェクトを TuneLab プロジェクト（.tlp）に書き出します（TuneLab で調声するため、
-    一方向）。調声済みのファイルに上書きしないでください。TuneLab で歌わせるには別途 TuneLab 用の VOCALOID6 音声拡張が
-    必要です。持ち越せないものは dropped と warnings に出ます。"""
+    `warnings` report what is left behind. Part effect settings (e.g. an edited voice colour) are not carried: only the
+    style name is. / プロジェクトを TuneLab プロジェクト（.tlp）に書き出します（TuneLab で調声するため、一方向）。
+    調声済みのファイルに上書きしないでください。TuneLab で歌わせるには別途 TuneLab 用の VOCALOID6 音声拡張が必要です。
+    持ち越せないものは dropped と warnings に出ます。パートのエフェクト設定（編集したボイスカラーなど）は持ち越さず、
+    スタイル名だけを持ち越します。"""
     output = os.path.abspath(output)
     if not output.lower().endswith(".tlp"):  # never write over a .vpr or any other kind of file
         raise VocaloidError("Output must be a .tlp file", "出力ファイルは .tlp にしてください")

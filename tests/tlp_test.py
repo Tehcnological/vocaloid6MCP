@@ -146,7 +146,7 @@ def test_ai_curves():
     t = ai_track(controllers=curves(dynamics=[(0, 64), (480, 127)], s5Expression=[(0, 100)], s5Air=[(0, -50)],
                                     s5Character=[(0, 32)], pitchBend=[(0, 4096)], pitchBendSens=[(0, 12)]))
     a = first_part(convert(project(t))[0])["automations"]
-    ok(a["Dynamics"]["values"] == [0, 0.0, 480, 63 / 64], "Dynamics scaled", a.get("Dynamics"))
+    ok(a["Dynamics"]["values"] == [0, 0.0, 479, 0.0, 480, 63 / 64], "Dynamics scaled", a.get("Dynamics"))
     ok([a[k]["values"][1] for k in ("Expression", "Air", "Gender", "PitchBend", "PitchBendSensitivity")] == [1.0, -0.5, -0.5, 0.5, 12],
        "AI lanes scaled", a)
     ok(all(a[k]["default"] == 0 for k in ("Dynamics", "Expression", "Air", "Gender", "PitchBend"))
@@ -280,6 +280,52 @@ def test_engines_with_extension():
     cli = fake_cli(tempfile.mkdtemp(), "ext", 'echo {"mode": "sources", "engine": "VOCALOID6", "loaded": true, "total": 3, "sources": []}')
     r = with_cli(cli, tunelab.engines)
     ok(r == {"installed": True, "vocaloid6_engine": True, "voices": 3}, "engine and voice count", r)
+
+
+def test_curves_hold_until_next_point():
+    t = ai_track(controllers=curves(dynamics=[(0, 0), (480, 127), (481, 64)]))
+    v = first_part(convert(project(t))[0])["automations"]["Dynamics"]["values"]
+    ok(v == [0, -1.0, 479, -1.0, 480, 63 / 64, 481, 0.0], "VOCALOID curves are steps: value held until the next point", v)
+
+
+def test_volume_pan_automation_dropped():
+    t = ai_track()
+    t.update({"volume": {"events": [{"pos": 0, "value": 0}, {"pos": 960, "value": -30}]},
+              "panpot": {"events": [{"pos": 0, "value": 0}, {"pos": 960, "value": 10}]}})
+    _, dropped, _ = convert(project(t))
+    ok({"track": 0, "part": None, "what": "track volume/pan automation", "count": 2} in dropped,
+       "later volume/pan events reported", dropped)
+
+
+def test_path_fallback_finds_the_cli_not_the_editor():
+    import shutil
+    import tempfile
+    from vocaloid6_mcp import tunelab
+    d = tempfile.mkdtemp()
+    for name in ("TuneLab.exe", "TuneLab.Cli.exe", "tunelab.cmd"):
+        open(os.path.join(d, name), "w").close()
+    saved = {k: os.environ.get(k) for k in ("TUNELAB_CLI", "LOCALAPPDATA", "PATH")}
+    try:
+        os.environ.pop("TUNELAB_CLI", None)
+        os.environ["LOCALAPPDATA"] = tempfile.mkdtemp()
+        os.environ["PATH"] = d
+        found = tunelab.find_cli()
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    ok(found and os.path.basename(found).lower() == "tunelab.cli.exe", "PATH lookup returns TuneLab.Cli.exe", found)
+    shutil.rmtree(d, ignore_errors=True)
+
+
+def test_engines_reports_other_failures_as_errors():
+    import tempfile
+    from vocaloid6_mcp import tunelab
+    cli = fake_cli(tempfile.mkdtemp(), "bad", "echo unknown option --json& exit /b 2")
+    r = with_cli(cli, tunelab.engines)
+    ok("error" in r and "vocaloid6_engine" not in r, "a failing CLI is an error, not 'no extension'", r)
 
 
 if __name__ == "__main__":

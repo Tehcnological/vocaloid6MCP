@@ -88,7 +88,13 @@ def _automations(part: dict, ttype: int, drop) -> dict:
             drop(f"curve:{c.get('name')}")
             continue
         lane, scale, default = table[c["name"]]
-        out[lane] = {"default": default, "values": [x for e in events for x in (e["pos"], scale(e["value"]))]}
+        values, prev = [], None
+        for e in events:
+            if prev is not None and e["pos"] > prev["pos"] + 1:  # VOCALOID holds a value until the next point; TuneLab ramps
+                values += [e["pos"] - 1, scale(prev["value"])]
+            values += [e["pos"], scale(e["value"])]
+            prev = e
+        out[lane] = {"default": default, "values": values}
     return out
 
 
@@ -172,6 +178,8 @@ def convert(seq: dict, tracks: list[int] | None = None,
         if ttype == 1:
             drop(ti, None, "audio track")
             continue
+        drop(ti, None, "track volume/pan automation",
+             sum(max(0, len((t.get(k) or {}).get("events") or []) - 1) for k in ("volume", "panpot")))
         out_parts = []
         langs_seen: set[int] = set()
         for pi, p in enumerate(t.get("parts", [])):

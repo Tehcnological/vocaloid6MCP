@@ -168,7 +168,9 @@ and Japanese on every voice. Chinese on AI voices works for some voices only: ch
    memory: its commands change between versions.
 
 **Tuning rules in TuneLab.** Use TuneLab vibrato objects for vibrato. The per-note pitch settings take effect only
-when the part's `Mode(PIT/PIT+/Snap)` is not 2. Voice ids differ per voice; read them with TuneLab's `source list`.
+when the part's `Mode(PIT/PIT+/Snap)` is not 2. Voice ids differ per voice; read them with TuneLab's `source list`. If a part opens with no voice
+in TuneLab (an AI voice whose native language is not Japanese can get the wrong id), pick the voice again there.
+`self_check` needs VOCALOID6 running; in file-only work, check TuneLab's voices with its own `source list`.
 
 **Checking.** Export a `.tlp` copy, render it with a headless TuneLab into a temporary folder, and analyse it with
 the song-analysis scripts (section 5b). Never render, export audio from or save the user's open TuneLab session

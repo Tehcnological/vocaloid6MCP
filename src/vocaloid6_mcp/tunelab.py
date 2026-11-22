@@ -24,7 +24,7 @@ def find_cli() -> str | None:
     default = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "TuneLab", "TuneLab.Cli.exe")
     if os.path.isfile(default):
         return default
-    return shutil.which("tunelab")
+    return shutil.which("TuneLab.Cli")  # not "tunelab": PATHEXT would pick the editor, TuneLab.exe
 
 
 def status() -> dict:
@@ -58,8 +58,11 @@ def engines(timeout: float = 120) -> dict:
     except OSError as e:
         return {"installed": True, "error": f"TuneLab could not be started: {e} / TuneLab を起動できません: {e}"}
     start = out.find("{")
-    if code != 0 or start < 0:
+    if code != 0 and f'"{ENGINE}"' in out:  # TuneLab: no engine with type id "VOCALOID6"
         return {"installed": True, "vocaloid6_engine": False, "voices": 0, "hint": NO_EXTENSION_HINT}
+    if code != 0 or start < 0:
+        last = (out.strip().splitlines() or ["(no output)"])[-1]
+        return {"installed": True, "error": f"TuneLab exited with {code}: {last} / TuneLab がエラー {code} で終了: {last}"}
     try:
         data = json.loads(out[start:])
     except ValueError:
